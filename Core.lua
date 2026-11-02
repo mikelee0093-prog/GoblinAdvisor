@@ -253,6 +253,8 @@ local function Help()
 	print("  /ga find <text>     open the Market tab searching for that text")
 	print("  /ga item <item>     open an item's detail view (item id or item link)")
 	print("  /ga ledger          open the Ledger (real AH sales and purchases from mail); 'debug' / 'scan' at an open mailbox")
+	print("  /ga shop            shopping list; 'add <recipeID> [crafts]', 'clear'")
+	print("  /ga watch           watch list; '<itemID> <gold> [below|above]', 'remove <itemID>'")
 	print("  /ga chars           list tracked characters with saved gold and when it was saved")
 	print("  /ga bank            show what the last bank visit recorded")
 	print("  /ga scan            request an Auction House scan (open the AH first)")
@@ -297,6 +299,31 @@ local function Slash(msg)
 			local n = ns.Ledger.Scan("manual")
 			ns.Print(("ledger: %d new record(s). Mails seen: %d, invoices read: %d."):format(n, ns.Ledger.stats.mails, ns.Ledger.stats.invoices))
 		else ns.UI.OpenTab("ledger") end
+	elseif cmd == "shop" then
+		local sub, a, b = rest:match("^(%S*)%s*(%S*)%s*(%S*)")
+		if sub == "add" then
+			local rid, n = tonumber(a), tonumber(b) or 1
+			if rid and ns.Shopping.Add(rid, n) then ns.Print(("shopping list: %s x%d"):format(ns.db.recipes[rid].name, ns.Shopping.Qty(rid)))
+			else ns.Print("usage: /ga shop add <recipeID> [crafts]  (recipe ids are shown in the Market recipe view; the recipe must be recorded)") end
+		elseif sub == "clear" then ns.Shopping.Clear(); ns.Print("shopping list cleared")
+		else
+			ns.UI.OpenTab("lists"); ns.UI.lists.SetView("shopping")
+			local c = ns.Shopping.Compute()
+			ns.Print(("shopping list: %d recipe(s), to buy %s%s"):format(c.recipes, ns.FormatMoney(c.total, true), c.unpriced > 0 and (", " .. c.unpriced .. " reagent(s) unpriced") or ""))
+		end
+	elseif cmd == "watch" then
+		local sub, a, b, c3 = rest:match("^(%S*)%s*(%S*)%s*(%S*)%s*(%S*)")
+		if sub == "remove" then
+			local id = ns.Watch.Resolve(a)
+			if id and ns.Watch.Remove(id) then ns.Print("stopped watching " .. ns.RecipeManager.ItemName(id)) else ns.Print("usage: /ga watch remove <itemID>") end
+		elseif sub ~= "" then
+			local id, target = ns.Watch.Resolve(sub), ns.Watch.ParseGold(a)
+			if id and target and ns.Watch.Add(id, target, b == "above" and "above" or "below") then
+				ns.Print(("watching %s: alert when it %s %s"):format(ns.RecipeManager.ItemName(id), b == "above" and "rises to" or "falls to", ns.FormatMoney(target)))
+			else ns.Print("usage: /ga watch <itemID> <gold> [below|above]   or   /ga watch remove <itemID>") end
+		else
+			ns.UI.OpenTab("lists"); ns.UI.lists.SetView("watch")
+		end
 	elseif cmd == "chars" then
 		ns.CharacterManager.PrintList()
 	elseif cmd == "bank" then

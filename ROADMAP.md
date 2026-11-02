@@ -1,6 +1,6 @@
 # Goblin Advisor - roadmap
 
-Current version: 0.7.0 (Ledger added; mail invoice reading UNVERIFIED in game) (Retail interface 120105; Forever interface 16001 via `GoblinAdvisor_Camelot.toc`).
+Current version: 0.8.0 (Ledger sell-through, Lists tab with shopping list and watch list; all new mail/AH behaviour UNVERIFIED in game) (Retail interface 120105; Forever interface 16001 via `GoblinAdvisor_Camelot.toc`).
 Testing happens on Retail now. Forever (Classic+) adjustments follow its launch on Nov 4, 2026.
 The addon stays free: no paid features, no in-game ads or donation prompts (Blizzard UI add-on policy).
 Forever build title: "Goblin Advisor Forever" (title line in the Camelot toc only; same folder and code).
@@ -29,15 +29,15 @@ Phases 1 to 5 are built and pass the headless tests (370 checks). In-game verifi
 - Import / Export text box with a long pasted line.
 
 ## Next up
-1. Verify the Ledger in game: open the mailbox after AH activity, run `/ga ledger debug`, confirm invoices are read and buyer invoices exist for commodity buys.
+1. Verify the Ledger in game (sell-through too: expired/cancelled mail subjects and `GetInboxItem` order are unverified): open the mailbox after AH activity, run `/ga ledger debug`, confirm invoices are read and buyer invoices exist for commodity buys.
 2. Check the new market price against real listings in game (`/ga scan debug <itemID>` now shows cheapest listing, units and listings).
 3. Publish to CurseForge: project page, screenshots, API token as a GitHub secret, tag a release.
 
 ## Ideas for later
 - DONE in 0.7.0 (mail sales/purchases, by item, transactions, CSV; crafts not yet recorded): Ledger tab ("built-in spreadsheet"): record AH sales (mail invoices), purchases and crafts after install; real sale prices next to market estimates; raw sale vs crafting comparison; CSV copy button. Read only. Retail functions first, verify on Forever.
-- Sell-through estimate by comparing listings between scans (labelled as an estimate; unverified that listings can be matched).
-- Craft shopping list: pick a recipe and quantity; reagents minus what you own (bags and bank); what to buy.
-- Selling prompts; price alerts (chat message when a tracked item crosses a target during a scan); profit sparklines in the item detail view.
+- DONE in 0.8.0: real sell-through from expired/cancelled mail (Ledger). Scan-to-scan listing comparison dropped.
+- DONE in 0.8.0: Craft shopping list (Lists tab, `/ga shop`, "Add to shopping list" in Market recipe view). Later: split "own" by character, bank-only vs bags.
+- Selling prompts; price alerts DONE in 0.8.0 (Watch list: Lists tab, `/ga watch`, chat message after a scan; watched items are added to scans); profit sparklines in the item detail view.
 - Profession leveling planner (separate free companion addon): cheapest or fewest-crafts plan between two skill levels, counting expected crafts from skill-up odds. Needs per-recipe color thresholds and where recipes are learned: wait for Forever launch data. Goblin Advisor only gets a Settings/credits line naming it.
 - Guild bank / full item organizer (AO Items style) and AH notifications: deferred.
 

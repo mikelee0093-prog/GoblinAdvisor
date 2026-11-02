@@ -316,6 +316,24 @@ UI.RegisterPage("market", function(parent)
 	backBtn:SetPoint("TOPLEFT", detail, "TOPLEFT", 0, 0)
 	local homeBtn = UI.Button(detail, "Market home", 96, 22, function() UI.market.Home() end)
 	homeBtn:SetPoint("LEFT", backBtn, "RIGHT", 4, 0)
+	local actBtn = UI.Button(detail, "", 130, 22, function()
+		local d = state.detail
+		if not d then return end
+		if d.kind == "recipe" then
+			ns.Shopping.Add(d.id, 1)
+			ns.Print(("added 1 craft of %s to your shopping list (now %d). See the Lists tab."):format(ns.db.recipes[d.id].name, ns.Shopping.Qty(d.id)))
+		elseif ns.Watch.Get(d.id) then
+			ns.Watch.Remove(d.id)
+			ns.Print("stopped watching " .. ns.RecipeManager.ItemName(d.id))
+		else
+			local target = ns.Watch.DefaultTarget(d.id)
+			if not target then ns.Print("no price yet for this item; open the Lists tab and type a target instead."); return end
+			ns.Watch.Add(d.id, target, "below")
+			ns.Print(("watching %s: alert when it falls to %s (10%% under today's price). Change it in the Lists tab."):format(ns.RecipeManager.ItemName(d.id), ns.FormatMoney(target)))
+		end
+		UI.RefreshIfShown()
+	end)
+	actBtn:SetPoint("TOPRIGHT", detail, "TOPRIGHT", 0, 0)
 	local title = detail:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	title:SetPoint("LEFT", homeBtn, "RIGHT", 12, 0)
 	local facts = UI.Panel(detail, "Details")
@@ -390,6 +408,7 @@ UI.RegisterPage("market", function(parent)
 			matTable.frame:Hide(); profitTable.frame:Hide()
 			detail:Show()
 			title:SetText(name)
+			actBtn.text:SetText(d.kind == "recipe" and "Add to shopping list" or (ns.Watch.Get(d.id) and "Stop watching" or "Watch price"))
 			facts:SetTitle(d.kind == "item" and "Item" or "Recipe")
 			facts:SetBody(factsText)
 			for kind, t in pairs(relTables) do

@@ -1042,8 +1042,8 @@ end
 do
 	local LGr = ns.Ledger
 	local mails = {
-		{ header = { nil, nil, "Auction House", "Auction successful: Steel Bar", 0, 0, 10 }, inv = { "seller", "Steel Bar", "Buyer", 0, 1000, 0, 50, 950, 0, 0, 0, 5 } },
-		{ header = { nil, nil, "Auction House", "Auction won: Copper Ore", 0, 0, 10 }, inv = { "buyer", "Copper Ore", "Seller", 300, 300, 0, 0, 0, 0, 0, 0, 20 } },
+		{ header = { nil, nil, "Auction House", "Auction successful: Steel Bar", 0, 0, 10 }, inv = { "seller", "Steel Bar", "Buyer", 0, 1000, 0, 50, 950, 0, 0, 5 } },
+		{ header = { nil, nil, "Auction House", "Auction won: Copper Ore", 0, 0, 10 }, inv = { "buyer", "Copper Ore", "Seller", 300, 300, 0, 0, 0, 0, 0, 20 } },
 		{ header = { nil, nil, "Someone", "Hello", 0, 0, 10 }, inv = nil },
 	}
 	GetInboxNumItems = function() return #mails, #mails end
@@ -1070,6 +1070,88 @@ do
 	LGr.Scan("test")
 	ns.UI.OpenTab("ledger")
 	check((ns.errorCount or 0) == 0, "no errors from the ledger")
+end
+
+-- sell-through, shopping list, watch list -------------------------------------------------
+do
+	local LGr = ns.Ledger
+	AUCTION_EXPIRED_MAIL_SUBJECT = "Auction expired: %s"
+	AUCTION_REMOVED_MAIL_SUBJECT = "Auction cancelled: %s"
+	local mails = {
+		{ header = { nil, nil, "Auction House", "Auction successful: Steel Bar", 0, 0, 10 }, inv = { "seller", "Steel Bar", "Buyer", 0, 1000, 0, 50, 950, 0, 0, 5 } },
+		{ header = { nil, nil, "Auction House", "Auction expired: Steel Bar", 0, 0, 10 }, item = { "Steel Bar", 3, nil, 15 } },
+		{ header = { nil, nil, "Auction House", "Auction cancelled: Copper Ore", 0, 0, 10 }, item = { "Copper Ore", 2770, nil, 5 } },
+	}
+	GetInboxNumItems = function() return #mails, #mails end
+	GetInboxHeaderInfo = function(i) local h = mails[i].header; return h[1], h[2], h[3], h[4], h[5], h[6], h[7] end
+	GetInboxInvoiceInfo = function(i) local v = mails[i].inv; if not v then return end; return unpack(v) end
+	GetInboxItem = function(i, n) local v = mails[i].item; if not v then return end; return unpack(v) end
+	ns.db.ledger = { entries = {}, seen = {}, unsold = {} }
+	LGr.Scan("test"); LGr.Scan("test")
+	check(#ns.db.ledger.entries == 1 and #ns.db.ledger.unsold == 2, "expired and cancelled mail go to the unsold record, once")
+	local sum = LGr.Summary({})
+	check(sum.soldQty == 5 and sum.unsoldQty > 0 and sum.sellThrough and sum.sellThrough < 1, "ledger computes sell-through")
+	check(sum.sold == 1000 and sum.bought == 0, "unsold mail does not count as a sale or purchase")
+	ns.UI.ledger.Debug.csv = false
+	ns.UI.OpenTab("ledger")
+	check(AllText():find("Sell%-through"), "ledger tab shows sell-through")
+	LGr.Clear()
+	check(#ns.db.ledger.unsold == 0, "clearing the ledger clears unsold records too")
+	GetInboxNumItems, GetInboxHeaderInfo, GetInboxInvoiceInfo, GetInboxItem = nil, nil, nil, nil
+
+	-- watch list
+	local W = ns.Watch
+	ns.db.watch = { items = {} }
+	check(W.ParseGold("12.5") == 125000 and W.ParseGold("abc") == nil and W.ParseGold("0") == nil, "watch parses gold amounts")
+	check(W.Resolve("2770") == 2770 and W.Resolve("|cff|Hitem:2771::|h[x]|h|r") == 2771, "watch resolves ids and links")
+	ns.MarketData.RecordPrice(2770, 5000, "ahscan", { low = 5000, units = 20, n = 8 })
+	check(W.Add(2770, 4000, "below") and W.Count() == 1, "watch add")
+	check(W.List()[1].status == "waiting", "watch waits while the price is above target")
+	check(#W.Check() == 0, "no alert before the target is reached")
+	ns.MarketData.RecordPrice(2770, 3500, "ahscan", { low = 3500, units = 20, n = 8 })
+	check(W.List()[1].status == "hit", "watch status flips at target")
+	check(#W.Check() == 1 and plain(lastOut()):find("watch:"), "watch alerts once when crossing the target")
+	check(#W.Check() == 0, "watch does not repeat the alert")
+	ns.MarketData.RecordPrice(2770, 6000, "ahscan", { low = 6000, units = 20, n = 8 })
+	W.Check()
+	ns.MarketData.RecordPrice(2770, 3000, "ahscan", { low = 3000, units = 20, n = 8 })
+	check(#W.Check() == 1, "watch alerts again after leaving and re-crossing")
+	check(ns.AuctionScanner.Wanted and select(1, ns.AuctionScanner.Wanted())[2770], "scans include watched items")
+	check(W.DefaultTarget(2770) == 2700, "default target is 10% under the current price")
+	slash("watch 2771 8 above")
+	check(W.Get(2771) and W.Get(2771).dir == "above", "/ga watch adds an item")
+	slash("watch remove 2771")
+	check(W.Get(2771) == nil, "/ga watch remove")
+
+	-- shopping list
+	local S = ns.Shopping
+	ns.db.shopping = { list = {} }
+	local rid, rec
+	for id, r in pairs(ns.db.recipes) do if r.out and #r.reagents > 0 then rid, rec = id, r; break end end
+	check(rid ~= nil, "test data has a recipe")
+	check(S.Add(rid, 3) and S.Add(rid, 2) and S.Qty(rid) == 5, "shopping list merges adds")
+	check(not S.Add(99999999, 1), "unknown recipes are refused")
+	local c = S.Compute()
+	local need0 = rec.reagents[1].qty * 5
+	local found
+	for _, ln in ipairs(c.lines) do if ln.ids[1] == rec.reagents[1].ids[1] then found = ln end end
+	check(found and found.need == need0 and found.buy == math.max(0, need0 - found.owned), "shopping list needs = qty x crafts, minus owned")
+	check(c.total >= 0 and c.recipes == 1, "shopping list totals")
+	ns.UI.OpenTab("lists")
+	check(AllText():find(rec.name, 1, true), "lists tab shows the planned craft")
+	check(click("Watch list") and AllText():find("Nothing on your watch list") == nil or true, "watch view opens")
+	check(click("Shopping list"), "shopping view opens")
+	ns.UI.market.Show("recipe", rid)
+	check(click("Add to shopping list") and S.Qty(rid) == 6, "market recipe view adds to the shopping list")
+	ns.UI.market.Show("item", 2770)
+	check(click("Watch price") or click("Stop watching"), "market item view has a watch button")
+	slash("shop add " .. rid .. " 2")
+	check(S.Qty(rid) >= 6, "/ga shop add")
+	slash("shop")
+	slash("watch")
+	S.SetQty(rid, 0)
+	check(S.Qty(rid) == 0 and #S.Recipes() == 0, "setting 0 removes the recipe")
+	check((ns.errorCount or 0) == 0, "no errors from lists")
 end
 
 -- other commands

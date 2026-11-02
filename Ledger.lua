@@ -84,9 +84,42 @@ local function Remember(sig, expires)
 	ns.db.ledger.seen = kept
 end
 
+-- Unsold auctions come back as mail with no invoice: "Auction expired: <item>" or
+-- "Auction cancelled: <item>". Match the subject against the client's own subject strings
+-- (so other languages work too). UNVERIFIED in game; /ga ledger debug lists what it sees.
+local function SubjectPattern(fmt)
+	if type(fmt) ~= "string" or not fmt:find("%%s") then return nil end
+	local esc = fmt:gsub("([%^%$%(%)%.%[%]%*%+%-%?])", "%%%1"):gsub("%%%%s", "(.+)"):gsub("%%s", "(.+)")
+	return "^" .. esc .. "$"
+end
+
+local function UnsoldMail(i)
+	local r = { pcall(GetInboxHeaderInfo, i) }
+	if not r[1] then return nil end
+	local subject = ns.Safe(r[5])
+	if type(subject) ~= "string" then return nil end
+	for kind, global in pairs({ expired = AUCTION_EXPIRED_MAIL_SUBJECT, cancelled = AUCTION_REMOVED_MAIL_SUBJECT }) do
+		local pat = SubjectPattern(global)
+		local name = pat and subject:match(pat)
+		if name then
+			local qty, id = 1, nil
+			if GetInboxItem then
+				local it = { pcall(GetInboxItem, i, 1) }
+				if it[1] then
+					id = tonumber(ns.Safe(it[3]))     -- name, itemID, texture, count (UNVERIFIED order)
+					qty = tonumber(ns.Safe(it[5])) or 1
+				end
+			end
+			return { kind = kind, name = name, id = id, qty = math.max(1, qty) }
+		end
+	end
+	return nil
+end
+
 -- Read the open mailbox. Returns how many new records were added.
 function LG.Scan(reason)
 	if not (GetInboxNumItems and GetInboxInvoiceInfo) then LG.stats.noApi = true; return 0 end
+	LG.stats.noApi = false
 	local okN, n = pcall(GetInboxNumItems)
 	n = okN and ns.Safe(n)
 	if type(n) ~= "number" then return 0 end
@@ -95,8 +128,22 @@ function LG.Scan(reason)
 	LG.stats.mails = n
 	local now, added = ns.MarketData.Now(), 0
 	local L = ns.db.ledger
+	L.unsold = L.unsold or {}
 	for i = 1, n do
 		local inv = Invoice(i)
+		if not inv then
+			local u = UnsoldMail(i)
+			if u then
+				local days = DaysLeft(i)
+				local expires = now + (days or 0) * DAY
+				local sig = table.concat({ "unsold", u.kind, tostring(u.name), u.qty }, "|")
+				if not SeenBefore(sig, expires) then
+					L.unsold[#L.unsold + 1] = { t = now, kind = u.kind, name = u.name, id = u.id or LG.ItemID(u.name), qty = u.qty, char = ns.CharacterManager.currentKey }
+					Remember(sig, expires)
+					added = added + 1
+				end
+			end
+		end
 		if inv then
 			LG.stats.invoices = LG.stats.invoices + 1
 			local days = DaysLeft(i)
@@ -116,6 +163,7 @@ function LG.Scan(reason)
 		end
 	end
 	while #L.entries > MAX_ENTRIES do table.remove(L.entries, 1) end
+	while #L.unsold > MAX_ENTRIES do table.remove(L.unsold, 1) end
 	LG.stats.recorded = LG.stats.recorded + added
 	if added > 0 then
 		LG.revision = (LG.revision or 0) + 1
@@ -145,7 +193,7 @@ function LG.Debug()
 		local inv, other = Invoice(i)
 		print(("  #%d from %s, subject %s, money %s, days left %s -> %s"):format(i, tostring(ns.Safe(h[4])), tostring(ns.Safe(h[5])),
 			tostring(ns.Safe(h[6])), tostring(ns.Safe(h[8])),
-			inv and (inv.type .. " invoice for " .. tostring(inv.name) .. " x" .. inv.count) or (other and ("invoice type " .. tostring(other)) or "no invoice")))
+			inv and (inv.type .. " invoice for " .. tostring(inv.name) .. " x" .. inv.count) or (UnsoldMail(i) and ("returned unsold (" .. UnsoldMail(i).kind .. ")") or (other and ("invoice type " .. tostring(other)) or "no invoice"))))
 	end
 end
 
@@ -155,6 +203,15 @@ function LG.Entries(opts)
 	opts = opts or {}
 	local out, cutoff = {}, opts.since and (ns.MarketData.Now() - opts.since) or nil
 	for _, e in ipairs(ns.db.ledger.entries) do
+		if (not cutoff or e.t >= cutoff) and (not opts.char or e.char == opts.char) then out[#out + 1] = e end
+	end
+	return out
+end
+
+function LG.Unsold(opts)
+	opts = opts or {}
+	local out, cutoff = {}, opts.since and (ns.MarketData.Now() - opts.since) or nil
+	for _, e in ipairs(ns.db.ledger.unsold or {}) do
 		if (not cutoff or e.t >= cutoff) and (not opts.char or e.char == opts.char) then out[#out + 1] = e end
 	end
 	return out
@@ -196,7 +253,24 @@ function LG.Summary(opts)
 			s.bought = s.bought + e.gross
 		end
 	end
+	s.unsoldQty = 0
+	for _, e in ipairs(LG.Unsold(opts)) do
+		local key = e.id or ("name:" .. tostring(e.name):lower())
+		local it = byKey[key]
+		if not it then
+			it = { key = key, id = e.id, name = e.name, soldQty = 0, soldGross = 0, soldNet = 0, boughtQty = 0, boughtCost = 0, class = Class(e.id) }
+			byKey[key] = it
+			s.items[#s.items + 1] = it
+		end
+		it.unsoldQty = (it.unsoldQty or 0) + e.qty
+		s.unsoldQty = s.unsoldQty + e.qty
+	end
+	s.soldQty = 0
 	for _, it in ipairs(s.items) do
+		it.unsoldQty = it.unsoldQty or 0
+		s.soldQty = s.soldQty + it.soldQty
+		-- sell-through: of the items you listed, how many sold (only counts mail seen since install)
+		if it.soldQty + it.unsoldQty > 0 then it.sellThrough = it.soldQty / (it.soldQty + it.unsoldQty) end
 		if it.soldQty > 0 then it.avgSold = it.soldGross / it.soldQty end
 		if it.boughtQty > 0 then it.avgBought = it.boughtCost / it.boughtQty end
 		if it.id and it.avgSold then
@@ -206,6 +280,7 @@ function LG.Summary(opts)
 		it.net = it.soldNet - it.boughtCost
 	end
 	s.net = s.sold - s.fees - s.bought
+	if s.soldQty + s.unsoldQty > 0 then s.sellThrough = s.soldQty / (s.soldQty + s.unsoldQty) end
 	return s
 end
 
@@ -222,4 +297,4 @@ function LG.CSV(opts)
 	return table.concat(rows, "\n")
 end
 
-function LG.Clear() ns.db.ledger.entries, ns.db.ledger.seen = {}, {} ; LG.revision = (LG.revision or 0) + 1 end
+function LG.Clear() ns.db.ledger.entries, ns.db.ledger.seen, ns.db.ledger.unsold = {}, {}, {} ; LG.revision = (LG.revision or 0) + 1 end

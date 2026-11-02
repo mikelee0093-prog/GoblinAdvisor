@@ -18,6 +18,8 @@ local TABS = {
 	  planned = "Start/stop farming sessions with recorded gold, loot and gold per hour." },
 	{ id = "ledger", label = "Ledger", phase = 6,
 	  planned = "Real Auction House sales and purchases read from your mailbox invoices." },
+	{ id = "lists", label = "Lists", phase = 6,
+	  planned = "Shopping list for crafts and a watch list with price alerts." },
 	{ id = "characters", label = "Characters", phase = 5,
 	  planned = "All your characters, material allocation, and import/export between accounts." },
 	{ id = "settings", label = "Settings" },

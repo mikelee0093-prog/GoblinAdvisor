@@ -27,7 +27,9 @@ local defaults = {
 	activeSession = nil,                    -- the running session, kept across /reload
 	recipes = {},                           -- [recipeID] = recipe (see RecipeManager), account-wide
 	characters = {},                        -- ["Name-Realm"] = snapshot (see CharacterManager)
-	ledger = { entries = {}, seen = {} },   -- real AH sales and purchases read from mail invoices (see Ledger)
+	ledger = { entries = {}, seen = {}, unsold = {} },
+	watch = { items = {} },                 -- [itemID] = { target, dir, alerted } (see Watch)
+	shopping = { list = {} },               -- { {rid, qty}, ... } (see Shopping)   -- real AH sales and purchases read from mail invoices (see Ledger)
 }
 
 -- Fill in anything missing without touching values the player already has.

@@ -6,13 +6,15 @@ local _, ns = ...
 local UI = ns.UI
 
 local ITEM_COLS = {
-	{ key = "name", label = "Item", w = 190 },
-	{ key = "sold", label = "Sold", w = 44, align = "RIGHT" },
-	{ key = "avgSold", label = "Avg sold", w = 100, align = "RIGHT" },
+	{ key = "name", label = "Item", w = 160 },
+	{ key = "sold", label = "Sold", w = 40, align = "RIGHT" },
+	{ key = "unsold", label = "Unsold", w = 52, align = "RIGHT" },
+	{ key = "st", label = "Sold %", w = 52, align = "RIGHT" },
+	{ key = "avgSold", label = "Avg sold", w = 90, align = "RIGHT" },
 	{ key = "bought", label = "Bought", w = 52, align = "RIGHT" },
-	{ key = "avgBought", label = "Avg bought", w = 100, align = "RIGHT" },
-	{ key = "net", label = "Net", w = 110, align = "RIGHT" },
-	{ key = "vs", label = "vs market", w = 70, align = "RIGHT" },
+	{ key = "avgBought", label = "Avg bought", w = 90, align = "RIGHT" },
+	{ key = "net", label = "Net", w = 100, align = "RIGHT" },
+	{ key = "vs", label = "vs mkt", w = 56, align = "RIGHT" },
 }
 
 local TX_COLS = {
@@ -128,7 +130,7 @@ UI.RegisterPage("ledger", function(parent)
 		local st = ns.Ledger.stats
 		if st.noApi then
 			L[1] = ns.Color("orange", "This client has no mail invoice call, so sales cannot be read.")
-		elseif #sum.entries == 0 then
+		elseif #sum.entries == 0 and sum.unsoldQty == 0 then
 			L[1] = ns.Color("orange", "Nothing recorded for this selection yet.")
 			L[2] = ns.Color("grey", "Records start from now: open your mailbox after you sell or buy at the Auction House. The game gives no past history. Mail is only read, never taken.")
 		else
@@ -136,6 +138,10 @@ UI.RegisterPage("ledger", function(parent)
 				ns.FormatMoney(sum.bought, true), Signed(sum.net))
 			L[2] = ns.Color("grey", ("Net sales: crafted items %s   raw materials %s   other %s   (%d records)"):format(
 				ns.FormatMoney(sum.byClass.crafted, true), ns.FormatMoney(sum.byClass.material, true), ns.FormatMoney(sum.byClass.other, true), #sum.entries))
+			if sum.sellThrough then
+				L[3] = ns.Color("grey", ("Sell-through: %d%% of listed items sold (%d sold, %d came back unsold)."):format(
+					math.floor(sum.sellThrough * 100 + 0.5), sum.soldQty, sum.unsoldQty))
+			end
 		end
 		info:SetText(table.concat(L, "\n"))
 
@@ -148,12 +154,15 @@ UI.RegisterPage("ledger", function(parent)
 				rows[#rows + 1] = {
 					cells = { name = nm, sold = it.soldQty > 0 and tostring(it.soldQty) or ns.Color("grey", "-"),
 						avgSold = it.avgSold and ns.FormatMoney(it.avgSold, true) or ns.Color("grey", "-"),
+						unsold = it.unsoldQty > 0 and tostring(it.unsoldQty) or ns.Color("grey", "-"),
+						st = it.sellThrough and ("%d%%"):format(math.floor(it.sellThrough * 100 + 0.5)) or ns.Color("grey", "-"),
 						bought = it.boughtQty > 0 and tostring(it.boughtQty) or ns.Color("grey", "-"),
 						avgBought = it.avgBought and ns.FormatMoney(it.avgBought, true) or ns.Color("grey", "-"),
 						net = Signed(it.net), vs = Pct(it.vsMarket) },
-					sort = { name = nm, sold = it.soldQty, avgSold = it.avgSold, bought = it.boughtQty, avgBought = it.avgBought, net = it.net, vs = it.vsMarket },
+					sort = { name = nm, unsold = it.unsoldQty, st = it.sellThrough, sold = it.soldQty, avgSold = it.avgSold, bought = it.boughtQty, avgBought = it.avgBought, net = it.net, vs = it.vsMarket },
 					tip = { nm, it.class == "crafted" and "A crafted item." or (it.class == "material" and "A crafting material." or "Other item."),
 						"Avg sold = what buyers paid per item, before the 5% cut.",
+						"Unsold = items that came back by mail (expired or cancelled). Sold % = sold / (sold + unsold).",
 						it.market and ("Market price now: " .. ns.FormatMoney(it.market)) or "No current market price for comparison.",
 						it.id and "Click for the item details." or "Not matched to a known item (the mail only gives the name)." },
 					onClick = go,

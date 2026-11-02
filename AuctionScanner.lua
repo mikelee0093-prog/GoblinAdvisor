@@ -71,6 +71,7 @@ function AS.Wanted()
 		end
 	end
 	for id in pairs(ns.db.market.manual) do add(id) end
+	if ns.db.watch then for id in pairs(ns.db.watch.items or {}) do add(id) end end
 	return want, n
 end
 
@@ -144,6 +145,7 @@ function AS.Process(force)
 			end
 		end
 		ns.db.market.lastScan = ns.MarketData.Now()
+		if ns.Watch then ns.Try("watch check", ns.Watch.Check) end
 		AS.lastResult = { seen = seen, kept = kept, incomplete = incomplete, time = ns.db.market.lastScan }
 		AS.scanning = false
 		ns.Print(("scan done: %d listings read, prices updated for %d of %d tracked items%s."):format(seen, kept, wantN,
