@@ -8,8 +8,8 @@ local UI = ns.UI
 local CHAR_COLS = {
 	{ key = "name", label = "Character", w = 170 },
 	{ key = "level", label = "Lvl", w = 36, align = "RIGHT" },
-	{ key = "gold", label = "Gold", w = 112, align = "RIGHT" },
-	{ key = "profs", label = "Professions", w = 280 },
+	{ key = "gold", label = "Gold", w = 160, align = "RIGHT" },
+	{ key = "profs", label = "Professions", w = 232 },
 	{ key = "seen", label = "Last seen", w = 90 },
 }
 
@@ -43,7 +43,7 @@ local function CharacterRows(select)
 		local name = ClassColored(rec, rec.name or key) .. (me and ns.Color("gold", "  (you)") or "") .. ns.Color("grey", "-" .. (rec.realm or "?"))
 		local line = ns.CharacterManager.ProfessionLine(rec)
 		rows[#rows + 1] = {
-			cells = { name = name, level = tostring(rec.level or "?"), gold = rec.gold and ns.FormatMoney(rec.gold) or ns.Color("grey", "-"),
+			cells = { name = name, level = tostring(rec.level or "?"), gold = rec.gold and ns.FormatMoney(rec.gold, true) or ns.Color("grey", "-"),
 				profs = line or ns.Color("grey", "none recorded"), seen = me and "now" or Age(rec.lastSeen) },
 			sort = { name = rec.name or key, level = rec.level, gold = rec.gold, profs = line, seen = me and math.huge or rec.lastSeen },
 			tip = { Plain(rec.name or key) .. "-" .. (rec.realm or "?"), "Click for details.",
@@ -207,7 +207,7 @@ UI.RegisterPage("characters", function(parent)
 
 		local total, n, oldest = ns.CharacterManager.GoldSummary()
 		if state.view == "chars" then
-			info:SetText(("Total gold: %s across %d tracked character%s.  %s"):format(ns.FormatMoney(total), n, n == 1 and "" or "s",
+			info:SetText(("Total gold: %s across %d tracked character%s.  %s"):format(ns.FormatMoney(total, true), n, n == 1 and "" or "s",
 				ns.Color("grey", "Other characters show their gold from their last logout" .. (oldest and (", oldest " .. Plain(Age(oldest))) or "") .. ".")))
 			charTable:SetData(CharacterRows(Select))
 
@@ -217,7 +217,7 @@ UI.RegisterPage("characters", function(parent)
 			if sel then
 				local L = { ClassColored(sel, sel.name or state.selected) .. "-" .. (sel.realm or "?"),
 					("Level %s %s"):format(tostring(sel.level or "?"), sel.class or "?"),
-					"Gold: " .. (sel.gold and ns.FormatMoney(sel.gold) or "unknown"),
+					"Gold: " .. (sel.gold and ns.FormatMoney(sel.gold, true) or "unknown"),
 					"Last seen: " .. (me and "now" or Plain(Age(sel.lastSeen))), "" }
 				L[#L + 1] = ns.Color("gold", "Professions")
 				for _, p in ipairs(sel.professions or {}) do L[#L + 1] = ("  %s  %d / %d"):format(p.name, p.skill or 0, p.maxSkill or 0) end

@@ -53,7 +53,10 @@ function CM.Capture(reason)
 	rec.name, rec.realm = name, realm
 	rec.class, rec.classToken = className, classToken
 	rec.level = ns.Safe(UnitLevel("player")) or rec.level
-	if type(gold) == "number" then
+	-- Gold is not read at logout (the client may report 0 while shutting down), and a 0 that
+	-- appears out of nowhere never replaces a saved amount; a real change arrives with PLAYER_MONEY.
+	local distrust = reason == "logout" or (gold == 0 and (rec.gold or 0) > 0 and reason ~= "money")
+	if type(gold) == "number" and not distrust then
 		rec.gold = gold
 		if not CM.sessionStartGold then CM.sessionStartGold = gold end
 	end
@@ -151,6 +154,16 @@ function CM.Delete(key)
 	end
 	ns.db.sessions = kept
 	return true
+end
+
+function CM.PrintList()
+	ns.Print("tracked characters:")
+	for _, e in ipairs(CM.List()) do
+		print(("  %s  level %s  gold %s  saved %s"):format(e.key, tostring(e.rec.level or "?"),
+			e.rec.gold and ns.FormatMoney(e.rec.gold, true) or "never recorded",
+			e.key == CM.currentKey and "now" or ns.MarketData.FormatAge(e.rec.lastSeen)))
+	end
+	if #CM.List() == 0 then print("  none yet") end
 end
 
 function CM.PrintStatus()

@@ -9,7 +9,7 @@ end
 
 local function Signed(copper)
 	if copper == nil then return ns.Color("grey", "unknown") end
-	return ns.Color(copper > 0 and "green" or (copper < 0 and "red" or "grey"), copper > 0 and "+" or "") .. ns.FormatMoney(copper)
+	return ns.Color(copper > 0 and "green" or (copper < 0 and "red" or "grey"), copper > 0 and "+" or "") .. ns.FormatMoney(copper, true)
 end
 
 local function SnapshotText(snap)

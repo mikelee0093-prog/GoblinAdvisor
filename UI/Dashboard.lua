@@ -22,11 +22,11 @@ local function CharacterText()
 	lines[#lines + 1] = ("Level %s %s"):format(tostring(rec.level or "?"), ClassColored(rec))
 	local stage, why = ns.Recommendations.Stage()
 	if stage then lines[#lines + 1] = ("Stage: %s %s"):format(ns.Color("gold", ns.Recommendations.STAGE_LABEL[stage]), ns.Color("grey", "(" .. why .. ")")) end
-	lines[#lines + 1] = "Gold: " .. ns.FormatMoney(rec.gold)
+	lines[#lines + 1] = "Gold: " .. ns.FormatMoney(rec.gold, true)
 	local delta = ns.CharacterManager.SessionDelta()
 	if delta then
 		local color = delta > 0 and "green" or (delta < 0 and "red" or "grey")
-		lines[#lines + 1] = "Since login: " .. ns.Color(color, (delta > 0 and "+" or "")) .. ns.FormatMoney(delta)
+		lines[#lines + 1] = "Since login: " .. ns.Color(color, (delta > 0 and "+" or "")) .. ns.FormatMoney(delta, true)
 	end
 	lines[#lines + 1] = ns.Color("gold", "Professions")
 	if ns.CharacterManager.professionsReadable == false then
@@ -45,7 +45,7 @@ local function AccountText()
 	local CM = ns.CharacterManager
 	local lines = {}
 	local total, n, oldest = CM.GoldSummary()
-	lines[#lines + 1] = ("Total gold: %s  %s"):format(ns.FormatMoney(total), ns.Color("grey", ("(%d character%s)"):format(n, n == 1 and "" or "s")))
+	lines[#lines + 1] = ("Total gold: %s  %s"):format(ns.FormatMoney(total, true), ns.Color("grey", ("(%d character%s)"):format(n, n == 1 and "" or "s")))
 	local list = CM.List()
 	for i = 1, math.min(4, #list) do
 		local rec = list[i].rec
@@ -53,7 +53,7 @@ local function AccountText()
 		local nm = rec.name or list[i].key
 		if color and color.colorStr then nm = "|c" .. color.colorStr .. nm .. "|r" end
 		lines[#lines + 1] = ("  %s  %s%s"):format(nm,
-			rec.gold and ns.FormatMoney(rec.gold) or ns.Color("grey", "-"),
+			rec.gold and ns.FormatMoney(rec.gold, true) or ns.Color("grey", "-"),
 			list[i].key == CM.currentKey and "" or ns.Color("grey", "  " .. ns.MarketData.FormatAge(rec.lastSeen)))
 	end
 	if #list > 4 then lines[#lines + 1] = ns.Color("grey", ("  +%d more on the Characters tab"):format(#list - 4)) end

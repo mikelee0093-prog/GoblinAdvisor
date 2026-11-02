@@ -66,8 +66,9 @@ end
 function ns.ResetCoinIcons() coinIcons = nil end
 
 -- copper -> "12,345 [gold icon] 67 [silver icon]" (zero parts hidden, copper only below 1 gold).
+-- With full = true all three parts show: "12,345g 67s 89c" (used for character gold).
 -- With icons turned off in Settings it falls back to "12,345g 67s". nil -> "n/a".
-function ns.FormatMoney(copper)
+function ns.FormatMoney(copper, full)
 	if type(copper) ~= "number" then return ns.Color("grey", "n/a") end
 	local sign = copper < 0 and "-" or ""
 	copper = math.floor(math.abs(copper))
@@ -83,6 +84,13 @@ function ns.FormatMoney(copper)
 	end
 
 	local out = {}
+	if full then
+		-- gold amounts of characters: every part below the first non-zero one, copper included
+		if g > 0 then out[#out + 1] = part("ffd100", Commas(g), "g") end
+		if g > 0 or s > 0 then out[#out + 1] = part("c7c7cf", s, "s") end
+		out[#out + 1] = part("eda55f", c, "c")
+		return sign .. table.concat(out, " ")
+	end
 	if g > 0 then out[#out + 1] = part("ffd100", Commas(g), "g") end
 	if s > 0 then out[#out + 1] = part("c7c7cf", s, "s") end
 	if c > 0 and g == 0 then out[#out + 1] = part("eda55f", c, "c") end
@@ -159,6 +167,7 @@ end)
 
 ns.On("PLAYER_LOGIN", function()
 	ns.CharacterManager.Capture("login")
+	C_Timer.After(5, function() ns.CharacterManager.Capture("login-late") end)   -- money can load late
 	ns.UI.Build()
 	local _, build, _, iface = GetBuildInfo()
 	ns.Debug("client build", tostring(build), "interface", tostring(iface))
@@ -243,6 +252,7 @@ local function Help()
 	print("  /ga recipes         show recipe recording status; '/ga recipes clear' forgets recorded recipes")
 	print("  /ga find <text>     open the Market tab searching for that text")
 	print("  /ga item <item>     open an item's detail view (item id or item link)")
+	print("  /ga chars           list tracked characters with saved gold and when it was saved")
 	print("  /ga bank            show what the last bank visit recorded")
 	print("  /ga scan            request an Auction House scan (open the AH first)")
 	print("  /ga scan debug <item>  show raw scan listings for one item (checks per-stack vs per-unit prices)")
@@ -280,6 +290,8 @@ local function Slash(msg)
 		ns.RecipeManager.PrintStatus()
 		ns.MarketData.PrintStatus()
 		ns.AuctionScanner.PrintStatus()
+	elseif cmd == "chars" then
+		ns.CharacterManager.PrintList()
 	elseif cmd == "bank" then
 		ns.Print("bank records:")
 		ns.Inventory.PrintStatus()
