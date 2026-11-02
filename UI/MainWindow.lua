@@ -210,7 +210,7 @@ function UI.Build()
 
 	-- Title bar doubles as the drag handle.
 	local bar = CreateFrame("Frame", nil, win)
-	bar:SetPoint("TOPLEFT"); bar:SetPoint("TOPRIGHT"); bar:SetHeight(28)
+	bar:SetPoint("TOPLEFT"); bar:SetPoint("TOPRIGHT", -30, 0); bar:SetHeight(28)   -- stops short of the close button
 	bar:EnableMouse(true)
 	bar:RegisterForDrag("LeftButton")
 	bar:SetScript("OnDragStart", function() win:StartMoving() end)
@@ -220,6 +220,8 @@ function UI.Build()
 
 	local close = UI.Button(win, "X", 22, 20, function() win:Hide() end)
 	close:SetPoint("TOPRIGHT", -4, -4)
+	close:SetFrameLevel(win:GetFrameLevel() + 20)   -- always above the title bar so it gets the click
+	if close.RegisterForClicks then close:RegisterForClicks("LeftButtonUp") end
 
 	-- Corner grip for resizing.
 	local grip = CreateFrame("Button", nil, win)

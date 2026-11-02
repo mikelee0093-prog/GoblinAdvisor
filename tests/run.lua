@@ -1027,6 +1027,17 @@ do
 	check((ns.errorCount or 0) == 0, "no errors from the professions table")
 end
 
+-- close button ---------------------------------------------------------------------------
+do
+	ns.UI.OpenTab("dashboard")
+	check(GoblinAdvisorFrame:IsShown(), "window is open before closing")
+	check(click("X"), "close button exists")
+	check(not GoblinAdvisorFrame:IsShown(), "the X button closes the window")
+	slash("")
+	check(GoblinAdvisorFrame:IsShown(), "/ga reopens it")
+	check(UISpecialFrames[1] == "GoblinAdvisorFrame" or (function() for _, n in ipairs(UISpecialFrames) do if n == "GoblinAdvisorFrame" then return true end end end)(), "Escape closes the window")
+end
+
 -- other commands
 slash("scan debug 2770")
 check(plain(table.concat(out, "\n")):find("listing: stack of"), "/ga scan debug shows raw listings")
