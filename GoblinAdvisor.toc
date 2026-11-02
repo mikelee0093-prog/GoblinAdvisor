@@ -2,7 +2,7 @@
 ## Title: Goblin Advisor
 ## Notes: Account-wide gold-making intelligence for WoW: Forever (Phase 4: prices, profit, gathering advice and gold tracking).
 ## Author: kirk.lennstrom@gmail.com
-## Version: 0.5.1
+## Version: 0.6.0
 ## SavedVariables: GoblinAdvisorDB
 
 Core.lua

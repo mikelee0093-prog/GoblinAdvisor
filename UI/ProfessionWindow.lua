@@ -5,9 +5,9 @@
 local _, ns = ...
 local UI = ns.UI
 
-local PAGE = 8          -- recipes per page
 local MAX_BUTTONS = 14
 local LIST_W = 176
+local SUMMARY_H = 112    -- height of the summary box above the recipe table
 
 local function Skill(s)
 	local c = ns.CharacterManager.GetCurrent()
@@ -26,8 +26,8 @@ local function ReagentText(rec)
 	return table.concat(parts, ", ")
 end
 
--- Text for one profession panel.
-local function Describe(s, page)
+-- Text for one profession panel. compact = the short summary above the recipe table.
+local function Describe(s, compact)
 	if not s then return ns.Color("grey", "Pick a profession on the left.") end
 	local L = {}
 	local mine = Skill(s)
@@ -36,11 +36,16 @@ local function Describe(s, page)
 	else
 		L[#L + 1] = ns.Color("grey", "Current character does not have this profession.")
 	end
+	local others = 0
 	for _, c in ipairs(s.characters) do
 		if not (mine and c.key == ns.CharacterManager.currentKey) then
-			L[#L + 1] = ns.Color("grey", ("%s: %s / %s"):format(c.name or "?", c.skill or 0, c.maxSkill or 0))
+			others = others + 1
+			if not compact or others <= 2 then
+				L[#L + 1] = ns.Color("grey", ("%s: %s / %s"):format(c.name or "?", c.skill or 0, c.maxSkill or 0))
+			end
 		end
 	end
+	if compact and others > 2 then L[#L + 1] = ns.Color("grey", ("+%d more characters"):format(others - 2)) end
 	if s.recipes == 0 then
 		L[#L + 1] = ""
 		L[#L + 1] = ns.Color("orange", "No recipes recorded yet.")
@@ -53,7 +58,9 @@ local function Describe(s, page)
 	for _ in pairs(known or {}) do knownCount = knownCount + 1 end
 	L[#L + 1] = ("Recipes recorded: %s%s"):format(ns.Color("white", s.recipes),
 		known and ("  (you know " .. knownCount .. ")") or "")
-	L[#L + 1] = ("Materials: %d distinct, %.1f per recipe"):format(s.distinctMaterials, s.avgReagents or 0)
+	if not compact then
+		L[#L + 1] = ("Materials: %d distinct, %.1f per recipe"):format(s.distinctMaterials, s.avgReagents or 0)
+	end
 	local pp = ns.ProfitCalculator.Profession(s.name)
 	if pp and pp.score then
 		L[#L + 1] = ("Profit, best %d recipes avg: %s per craft  %s"):format(math.min(5, #pp.priced), ns.FormatMoney(pp.score),
@@ -61,24 +68,47 @@ local function Describe(s, page)
 	else
 		L[#L + 1] = "Profit: " .. ns.Color("orange", "no data") .. ns.Color("grey", pp and (" (" .. #pp.priced .. " of " .. pp.total .. " recipes priced; scan the Auction House)") or " (scan the Auction House)")
 	end
-	L[#L + 1] = ""
-	L[#L + 1] = ns.Color("gold", "Most used materials")
-	for _, m in ipairs(s.topMaterials) do
-		L[#L + 1] = ("  %s  %s"):format(ns.RecipeManager.ItemName(m.id), ns.Color("grey", "(" .. m.uses .. " recipes)"))
-	end
-
-	local recipes = ns.ProfessionManager.Recipes(s.name, known)
-	local pages = math.max(1, math.ceil(#recipes / PAGE))
-	page = math.min(math.max(page, 1), pages)
-	L[#L + 1] = ""
-	L[#L + 1] = ns.Color("gold", ("Recipes  page %d/%d"):format(page, pages)) .. ns.Color("grey", "   * = you know it")
-	for i = (page - 1) * PAGE + 1, math.min(#recipes, page * PAGE) do
-		local r = recipes[i]
-		local e = ns.ProfitCalculator.Evaluate(r.id, r.rec)
-		local profit = e and e.profit and (" -> " .. ns.Color(e.profit > 0 and "green" or "red", (e.profit > 0 and "+" or "") .. ns.FormatMoney(e.profit))) or ""
-		L[#L + 1] = ("%s%s: %s%s"):format(r.known and ns.Color("green", "* ") or "  ", r.rec.name, ReagentText(r.rec), profit)
+	if not compact then
+		L[#L + 1] = ""
+		L[#L + 1] = ns.Color("gold", "Most used materials")
+		for _, m in ipairs(s.topMaterials) do
+			L[#L + 1] = ("  %s  %s"):format(ns.RecipeManager.ItemName(m.id), ns.Color("grey", "(" .. m.uses .. " recipes)"))
+		end
 	end
 	return table.concat(L, "\n")
+end
+
+-- Rows for the recipe table of one profession: Name, Profit, Details.
+local RECIPE_COLS = {
+	{ key = "name", label = "Recipe", w = 300 },
+	{ key = "profit", label = "Profit per craft", w = 150, align = "RIGHT" },
+	{ key = "details", label = "", w = 90 },
+}
+
+local function RecipeRows(s)
+	local rows = {}
+	local known = ns.ProfessionManager.CurrentKnown(s.name)
+	for _, r in ipairs(ns.ProfessionManager.Recipes(s.name, known)) do
+		local e = ns.ProfitCalculator.Evaluate(r.id, r.rec)
+		local cells = { name = (r.known and ns.Color("green", "* ") or "  ") .. r.rec.name, details = ns.Color("blue", "Details >") }
+		local tip = { r.rec.name, ReagentText(r.rec) }
+		if e and e.profit then
+			cells.profit = ns.Color(e.profit > 0 and "green" or "red", (e.profit > 0 and "+" or "") .. ns.FormatMoney(e.profit)) .. (e.thin and ns.Color("orange", " *") or "")
+			if e.thin then tip[#tip + 1] = ns.Color("orange", "* Based on a thin market (few listings).") end
+		else
+			cells.profit = ns.Color("orange", "no data")
+			tip[#tip + 1] = "Not calculated: " .. ((e and e.reason) or "missing prices")
+		end
+		tip[#tip + 1] = r.known and "You know this recipe." or "Not learned by this character."
+		tip[#tip + 1] = "Click for the full breakdown."
+		local id = r.id
+		rows[#rows + 1] = {
+			cells = cells, tip = tip,
+			sort = { name = r.rec.name, profit = e and e.profit or nil, details = "" },
+			onClick = function() UI.market.Show("recipe", id) end,
+		}
+	end
+	return rows
 end
 
 local function CompareText(a, b)
@@ -95,7 +125,7 @@ local function CompareText(a, b)
 end
 
 UI.RegisterPage("professions", function(parent)
-	local state = { a = nil, b = nil, compare = false, page = 1, list = {} }
+	local state = { a = nil, b = nil, compare = false, list = {} }
 
 	local left = UI.Panel(parent, "Professions")
 	left:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
@@ -112,7 +142,6 @@ UI.RegisterPage("professions", function(parent)
 			local s = state.list[i]
 			if not s then return end
 			if state.compare and state.a and s.name ~= state.a then state.b = s.name else state.a = s.name end
-			state.page = 1
 			UI.RefreshIfShown()
 		end)
 		b:SetPoint("TOPLEFT", left, "TOPLEFT", 8, -28 - (i - 1) * 22)
@@ -124,17 +153,14 @@ UI.RegisterPage("professions", function(parent)
 		if not state.compare then state.b = nil end
 		UI.RefreshIfShown()
 	end)
-	local prev = UI.Button(parent, "< Page", 70, 22, function() state.page = math.max(1, state.page - 1); UI.RefreshIfShown() end)
-	local nxt = UI.Button(parent, "Page >", 70, 22, function() state.page = state.page + 1; UI.RefreshIfShown() end)
+	local recipeTable = UI.Table(parent, RECIPE_COLS, { sortKey = "profit" })
 	local note = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	note:SetJustifyH("LEFT")
 
 	local function Layout()
 		local x = LIST_W + 6
 		toggle:ClearAllPoints(); toggle:SetPoint("TOPLEFT", parent, "TOPLEFT", x, 0)
-		prev:ClearAllPoints(); prev:SetPoint("LEFT", toggle, "RIGHT", 8, 0)
-		nxt:ClearAllPoints(); nxt:SetPoint("LEFT", prev, "RIGHT", 4, 0)
-		note:ClearAllPoints(); note:SetPoint("LEFT", nxt, "RIGHT", 10, 0)
+		note:ClearAllPoints(); note:SetPoint("LEFT", toggle, "RIGHT", 10, 0)
 
 		panelA:ClearAllPoints(); panelB:ClearAllPoints(); cmp:ClearAllPoints()
 		local top = -28
@@ -152,10 +178,16 @@ UI.RegisterPage("professions", function(parent)
 			cmp:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
 			cmp:SetHeight(cmpH)
 			panelB:Show(); cmp:Show()
+			recipeTable.frame:Hide()
 		else
 			panelA:SetPoint("TOPLEFT", parent, "TOPLEFT", x, top)
-			panelA:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
+			panelA:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, top)
+			panelA:SetHeight(SUMMARY_H)
 			panelB:Hide(); cmp:Hide()
+			recipeTable.frame:ClearAllPoints()
+			recipeTable.frame:SetPoint("TOPLEFT", panelA, "BOTTOMLEFT", 0, -6)
+			recipeTable.frame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
+			recipeTable.frame:Show()
 		end
 	end
 	parent:SetScript("OnSizeChanged", Layout)
@@ -197,10 +229,12 @@ UI.RegisterPage("professions", function(parent)
 
 		local sa, sb = Find(list, state.a), Find(list, state.b)
 		panelA:SetTitle(sa and sa.name or "Profession")
-		panelA:SetBody(Describe(sa, state.page))
-		if state.compare and sb then
+		local comparing = state.compare and sb
+		panelA:SetBody(Describe(sa, not comparing))
+		if sa and not comparing then recipeTable:SetData(sa.recipes > 0 and RecipeRows(sa) or {}) end
+		if comparing then
 			panelB:SetTitle(sb.name)
-			panelB:SetBody(Describe(sb, state.page))
+			panelB:SetBody(Describe(sb, false))
 			cmp:SetTitle(("Compare: %s  vs  %s"):format(sa and sa.name or "?", sb.name))
 			cmp:SetBody(CompareText(sa, sb))
 		end

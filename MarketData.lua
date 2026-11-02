@@ -72,12 +72,14 @@ MD.Register({
 })
 
 ---------------------------------------------------------------- writing prices
-function MD.RecordPrice(itemID, copper, source)
+function MD.RecordPrice(itemID, copper, source, info)
 	local m = ns.db and ns.db.market
 	if not m or type(itemID) ~= "number" or type(copper) ~= "number" or copper <= 0 then return false end
 	copper = math.floor(copper)
 	local now = MD.Now()
-	m.prices[itemID] = { price = copper, t = now, src = source }
+	local rec = { price = copper, t = now, src = source }
+	if type(info) == "table" then rec.low, rec.units, rec.n, rec.thin = info.low, info.units, info.listings, info.thin or nil end
+	m.prices[itemID] = rec
 
 	local h = m.history[itemID]
 	if not h then h = {}; m.history[itemID] = h end
@@ -128,6 +130,8 @@ function MD.GetStats(itemID)
 		s.stale = s.ageDays > STALE_DAYS
 	end
 	if p.source == "ahscan" then
+		local raw = ns.db.market.prices[itemID]
+		if raw and raw.low then s.low, s.units, s.listings, s.thin = raw.low, raw.units, raw.n, raw.thin or false end
 		local h = ns.db.market.history[itemID]
 		if h and #h >= 3 then
 			-- "recent average" = every sample before the newest one

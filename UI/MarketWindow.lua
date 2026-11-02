@@ -30,6 +30,8 @@ local function DayLabel(day)
 	return "day " .. day
 end
 
+local function plainMoney(v) return ns.FormatMoney(v) end
+
 local function Money(v) return v and ns.FormatMoney(v) or ns.Color("orange", "no data") end
 
 local function Signed(v)
@@ -78,7 +80,7 @@ local function MaterialRows(showUnpriced, query, go)
 				local cells, sort, tip = { name = name }, { name = name }, { name }
 				if st then
 					local action, why = ns.Recommendations.MaterialAction(id)
-					cells.price = ns.FormatMoney(st.price)
+					cells.price = ns.FormatMoney(st.price) .. (st.thin and ns.Color("orange", " *") or "")
 					cells.avg = st.avg and ns.FormatMoney(st.avg) or ns.Color("grey", "-")
 					cells.change = Pct(st.change)
 					cells.value = owned and owned > 0 and ns.FormatMoney(st.price * owned) or ns.Color("grey", "-")
@@ -87,6 +89,7 @@ local function MaterialRows(showUnpriced, query, go)
 					sort.value = owned and st.price * owned or nil
 					sort.action = action
 					tip[#tip + 1] = SourceLine(st)
+					if st.thin then tip[#tip + 1] = ns.Color("orange", ("Thin market: only %d units in %d listings, so this price may not hold."):format(st.units or 0, st.listings or 0)) end
 					if st.avg then
 						tip[#tip + 1] = ("Recent average = mean of your %d earlier daily scans. Change = current price vs that average."):format(st.samples - 1)
 					else
@@ -117,7 +120,7 @@ local function ProfitRows(showUnpriced, query, go)
 				local c = e.profit > 0 and "green" or "red"
 				cells.cost = ns.FormatMoney(e.cost)
 				cells.sells = ns.FormatMoney(e.outPrice)
-				cells.profit = ns.Color(c, e.profit > 0 and "+" or "") .. ns.FormatMoney(e.profit)
+				cells.profit = ns.Color(c, e.profit > 0 and "+" or "") .. ns.FormatMoney(e.profit) .. (e.thin and ns.Color("orange", " *") or "")
 				cells.margin = e.margin and Pct(e.margin) or ns.Color("grey", "-")
 				cells.verdict = e.uplift > 0 and ns.Color("green", "craft") or ns.Color("orange", "sell raw")
 				sort.cost, sort.sells, sort.profit, sort.margin, sort.verdict = e.cost, e.outPrice, e.profit, e.margin, e.verdict
@@ -126,6 +129,7 @@ local function ProfitRows(showUnpriced, query, go)
 				tip[#tip + 1] = ("Profit = sells for - reagents. Return on spend: %s"):format(e.roi and ("%+d%%"):format(math.floor(e.roi * 100)) or "n/a")
 				tip[#tip + 1] = ("vs raw: if you already hold the reagents, selling them instead would net %s, so crafting is %s."):format(ns.FormatMoney(e.rawNet), e.uplift > 0 and "better" or "worse")
 				if e.stale then tip[#tip + 1] = "Some prices used are stale (over 3 days old)." end
+				if e.thin then tip[#tip + 1] = ns.Color("orange", "* Based on a thin market (few listings): treat this profit as less certain.") end
 			else
 				cells.profit = ns.Color("orange", "no data")
 				tip[#tip + 1] = "Not calculated: " .. (e.reason or "missing prices") .. "."
@@ -149,8 +153,13 @@ local function ItemDetail(id, go)
 	local st = ns.MarketData.GetStats(id)
 	local L = {}
 	if st then
-		L[#L + 1] = "Price: " .. ns.FormatMoney(st.price)
+		L[#L + 1] = "Market price: " .. ns.FormatMoney(st.price)
 		L[#L + 1] = ns.Color("grey", SourceLine(st))
+		if st.low then
+			L[#L + 1] = ns.Color("grey", ("Cheapest listing %s; %d units in %d listings."):format(plainMoney(st.low), st.units or 0, st.listings or 0))
+			L[#L + 1] = ns.Color("grey", "Market price = average of the cheapest ~15% of units, ignoring low-ball listings.")
+			if st.thin then L[#L + 1] = ns.Color("orange", "Thin market: few listings, so this price may not hold.") end
+		end
 		if st.avg then
 			L[#L + 1] = ("Recent average: %s  (%s)"):format(ns.FormatMoney(st.avg), Pct(st.change))
 		else
@@ -232,6 +241,7 @@ local function RecipeDetail(rid, go)
 		L[#L + 1] = ("If you hold the reagents: selling them raw nets %s, so crafting is %s by %s."):format(
 			ns.FormatMoney(e.rawNet), e.uplift > 0 and ns.Color("green", "better") or ns.Color("orange", "worse"), ns.FormatMoney(math.abs(e.uplift)))
 		if e.stale then L[#L + 1] = ns.Color("orange", "Some prices used are stale (over 3 days old).") end
+		if e.thin then L[#L + 1] = ns.Color("orange", "Some prices come from thin markets (few listings): less certain.") end
 	else
 		L[#L + 1] = ns.Color("orange", "Not calculated: " .. (e.reason or "missing prices") .. ".")
 		if #e.missing > 0 then L[#L + 1] = ns.Color("grey", "Scan the Auction House or use /ga setprice for the reagents marked no data.") end
@@ -249,6 +259,8 @@ local function RecipeDetail(rid, go)
 				tip[#tip + 1] = ("  Tier %d: %s  %s%s"):format(i, ns.RecipeManager.ItemName(t.id), t.price and ns.FormatMoney(t.price) or "no data", t == ch and "  <- used" or "")
 			end
 		end
+		local rawp = ch.price and ns.db.market.prices[ch.id]
+		if rawp and rawp.thin then tip[#tip + 1] = ns.Color("orange", "Thin market: few listings.") end
 		if not slot.priced then tip[#tip + 1] = ("No price. /ga setprice %d <gold>"):format(ch.id) end
 		rows[#rows + 1] = {
 			cells = { name = ns.RecipeManager.ItemName(ch.id) .. (#slot.tiers > 1 and ns.Color("grey", ("  (%d tiers)"):format(#slot.tiers)) or ""),
@@ -320,7 +332,11 @@ UI.RegisterPage("market", function(parent)
 
 	-- navigation ------------------------------------------------------
 	local function Go(kind, id)
-		if state.detail then table.insert(state.history, state.detail) end
+		if state.detail then
+			table.insert(state.history, state.detail)
+		elseif UI.current and UI.current ~= "market" then
+			state.returnTab = UI.current          -- opened from another tab: Back goes back there
+		end
 		state.detail = { kind = kind, id = id }
 		UI.OpenTab("market")
 	end
@@ -328,17 +344,24 @@ UI.RegisterPage("market", function(parent)
 	UI.market = {
 		Show = Go,
 		Back = function()
-			state.detail = table.remove(state.history)
+			local prev = table.remove(state.history)
+			if prev == nil and state.returnTab then
+				local tab = state.returnTab
+				state.returnTab, state.detail = nil, nil
+				UI.OpenTab(tab)
+				return
+			end
+			state.detail = prev
 			UI.RefreshIfShown()
 		end,
 		Home = function()
-			state.detail, state.history = nil, {}
+			state.detail, state.history, state.returnTab = nil, {}, nil
 			state.query = ""
 			search:SetText("")
 			UI.RefreshIfShown()
 		end,
 		Find = function(text)
-			state.detail, state.history = nil, {}
+			state.detail, state.history, state.returnTab = nil, {}, nil
 			search:SetText(text or "")
 			state.query = (text or ""):lower()
 			UI.OpenTab("market")

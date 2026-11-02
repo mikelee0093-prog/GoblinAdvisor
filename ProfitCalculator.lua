@@ -14,15 +14,16 @@ local MIN_PRICED = 3         -- fewer priced recipes than this and a profession 
 local cache = { key = nil }
 
 local function CheapestTier(ids)
-	local best, bestId, stale
+	local best, bestId, stale, thin
 	for _, id in ipairs(ids) do
 		local p = ns.MarketData.GetPrice(id)
 		if p and (not best or p.price < best) then
 			best, bestId = p.price, id
 			stale = p.updated and (ns.MarketData.Now() - p.updated) > ns.MarketData.STALE_DAYS * ns.MarketData.DAY
+			thin = p.source == "ahscan" and ns.db.market.prices[id] and ns.db.market.prices[id].thin or false
 		end
 	end
-	return best, bestId, stale
+	return best, bestId, stale, thin
 end
 
 -- Work out one recipe. Always returns a table; check e.profit before using money fields.
@@ -39,10 +40,11 @@ function PC.Evaluate(rid, rec)
 
 	local cost, complete = 0, #rec.reagents > 0
 	for _, slot in ipairs(rec.reagents) do
-		local price, _, stale = CheapestTier(slot.ids)
+		local price, _, stale, thin = CheapestTier(slot.ids)
 		if price then
 			cost = cost + price * slot.qty
 			if stale then e.stale = true end
+			if thin then e.thin = true end
 		else
 			complete = false
 			e.missing[#e.missing + 1] = slot.ids[1]
@@ -55,6 +57,7 @@ function PC.Evaluate(rid, rec)
 		local o = ns.MarketData.GetPrice(rec.out)
 		if o then
 			e.outPrice = o.price
+			if o.source == "ahscan" and ns.db.market.prices[rec.out] and ns.db.market.prices[rec.out].thin then e.thin = true end
 			if o.updated and (ns.MarketData.Now() - o.updated) > ns.MarketData.STALE_DAYS * ns.MarketData.DAY then e.stale = true end
 		end
 	end

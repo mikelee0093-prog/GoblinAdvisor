@@ -1,23 +1,26 @@
 # Goblin Advisor - roadmap
 
-Current version: 0.5.1 (Retail interface 120105; Forever interface 16001 via `GoblinAdvisor_Camelot.toc`).
+Current version: 0.6.0 (Retail interface 120105; Forever interface 16001 via `GoblinAdvisor_Camelot.toc`).
 Testing happens on Retail now. Forever (Classic+) adjustments follow its launch on Nov 4, 2026.
 The addon stays free: no paid features, no in-game ads or donation prompts (Blizzard UI add-on policy).
 Forever build title: "Goblin Advisor Forever" (title line in the Camelot toc only; same folder and code).
 
 ## Where we are
-Phases 1 to 5 are built and pass the headless tests (348 checks). In-game verification is partial: see "Needs testing".
+Phases 1 to 5 are built and pass the headless tests (370 checks). In-game verification is partial: see "Needs testing".
 
 - Dashboard: current character, account gold total with data age, recommended activities (only your professions; unlearned recipes you have the skill for are flagged "learn the recipe first"), profession outlook with an explanation, materials you hold.
-- Professions: recipes per profession, profit per craft, compare tool.
+- Professions: summary plus a recipe table (Name, Profit per craft, Details >); clicking a recipe opens the Market detail view and Back returns here; compare tool.
 - Market: materials and crafting profit lists, search, click any row for an item or recipe detail view (price, source and age, history, reagents with quality tiers, full profit calculation), Back and Market home.
 - Gathering: most valuable Mining, Herbalism and Skinning materials for your character.
 - Gold Tracker: recorded gold and theoretical loot value kept apart; history per character; Reset history (click twice).
 - Characters: gold with copper, professions, last seen, safe Delete (click twice, never the logged-in character), Materials view (who holds what, who should use it), Import / Export of manual prices and character summaries (previewed before applying).
+- Market price: average of the cheapest ~15% of listed units, ignoring low-ball listings; thin markets (few units or listings) are flagged with an orange * and warnings.
 - Data: Auction House scan (read only), manual prices (`/ga setprice`), bank snapshots (character and Warband), bag snapshots.
 - Commands: `/ga help` lists them (`/ga chars`, `/ga bank`, `/ga find`, `/ga item`, `/ga scan debug`, `/ga status`, `/ga recipes`).
 
 ## Needs testing (in game)
+- New market price and thin-market flags: compare a few items with the Auction House (`/ga scan debug <itemID>`).
+- Professions tab: recipe table layout and the Details link / Back behaviour.
 - Gather tab and Gold Tracker: more use.
 - `/ga bank` after opening the bank: bank tab ids are unverified. Bag and bank snapshots feed the Materials view.
 - AH price unit: `/ga scan debug <itemID>`; toggle "scan price is per unit" in Settings if wrong. Every profit figure depends on this.
@@ -26,9 +29,9 @@ Phases 1 to 5 are built and pass the headless tests (348 checks). In-game verifi
 - Import / Export text box with a long pasted line.
 
 ## Next up
-1. Price accuracy: replace "lowest listing" with a sturdier market price (cost to buy the cheapest few units, or a middle value that ignores outliers); flag thin or gapped markets as low confidence; keep the "estimate" wording.
-2. Professions tab: more recipes per page; simple columns (Name, Profit, Details link); Details opens the Market detail view (Back and Market home).
-3. Add `.pkgmeta`, `.gitignore`, tests folder and this roadmap's housekeeping to the repo for CurseForge packaging.
+1. Ledger tab: real sales and purchases from mail and purchase events, realized price next to the market estimate (see Ideas).
+2. Check the new market price against real listings in game (`/ga scan debug <itemID>` now shows cheapest listing, units and listings).
+3. Publish to CurseForge: project page, screenshots, API token as a GitHub secret, tag a release.
 
 ## Ideas for later
 - Ledger tab ("built-in spreadsheet"): record AH sales (mail invoices), purchases and crafts after install; real sale prices next to market estimates; raw sale vs crafting comparison; CSV copy button. Read only. Retail functions first, verify on Forever.
@@ -42,7 +45,7 @@ Phases 1 to 5 are built and pass the headless tests (348 checks). In-game verifi
 Send: `/ga status`, `/ga recipes`, `/ga scan debug <itemID>`, `/ga bank`. Likely differences: recipe data fields, AH listing format and price unit, bank layout and Warband bank, profession skill model, item category ids for gathering.
 
 ## Publishing (CurseForge)
-BigWigs packager: `.pkgmeta` (package-as GoblinAdvisor, ignore tests and docs), a license (LICENSE is in the repo), project page text and screenshots, API token as a GitHub secret, tag releases (`v0.5.1`). Keep a changelog. Keep the addon free.
+BigWigs packager: `.pkgmeta` is in the repo (package-as GoblinAdvisor, ignores tests and notes), a license (LICENSE is in the repo), project page text and screenshots, API token as a GitHub secret, tag releases (`v0.5.1`). Keep a changelog. Keep the addon free.
 
 ## Repo
 GitHub: mikelee0093-prog/GoblinAdvisor. The repo root is the addon folder (`GoblinAdvisor.toc` at the top); keep the folder named `GoblinAdvisor` inside `Interface\AddOns`. Commits can be pushed from Claude sessions that have the repo; run `git pull` locally before committing.

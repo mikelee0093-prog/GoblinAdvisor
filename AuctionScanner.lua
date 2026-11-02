@@ -14,6 +14,42 @@ local REFRESH_AFTER = 5 * 60   -- re-read unchanged scan data at most this often
 local RETRY_AFTER = 60         -- ...or sooner, a couple of times, if many listings lacked item data
 local MAX_RETRIES = 2
 
+-- Market price from one item's listings: the average unit price of the cheapest ~15% of the
+-- units for sale (at least 1, at most 200 units), after dropping obvious low-ball listings
+-- (priced under half of that average). A single cheap listing therefore cannot set the price.
+-- listings = { { unitPrice, count }, ... }. Returns price, info or nil when there are none.
+local TAKE_SHARE, TAKE_MAX, LOWBALL, THIN_UNITS, THIN_LISTINGS = 0.15, 200, 0.5, 5, 3
+local function CheapestAverage(list, first, share)
+	local units = 0
+	for i = first, #list do units = units + list[i][2] end
+	local want = math.max(1, math.min(TAKE_MAX, math.ceil(units * share)))
+	local taken, cost = 0, 0
+	for i = first, #list do
+		local use = math.min(list[i][2], want - taken)
+		taken, cost = taken + use, cost + use * list[i][1]
+		if taken >= want then break end
+	end
+	return cost / taken
+end
+
+function AS.MarketPrice(listings)
+	if #listings == 0 then return nil end
+	local list = {}
+	for i, l in ipairs(listings) do list[i] = { l[1], math.max(1, l[2] or 1) } end
+	table.sort(list, function(a, b) return a[1] < b[1] end)
+	local units = 0
+	for _, l in ipairs(list) do units = units + l[2] end
+
+	local first = 1
+	local m0 = CheapestAverage(list, 1, TAKE_SHARE)
+	while first < #list and list[first][1] < m0 * LOWBALL do first = first + 1 end
+	local price = first == 1 and m0 or CheapestAverage(list, first, TAKE_SHARE)
+	return price, {
+		low = list[1][1], units = units, listings = #list, dropped = first - 1,
+		thin = units < THIN_UNITS or #list < THIN_LISTINGS,
+	}
+end
+
 AS.open = false
 AS.scanning = false
 AS.lastRequest = nil
@@ -95,18 +131,23 @@ function AS.Process(force)
 	end
 
 	local perUnit = ns.db.settings.scanPriceIsUnit
-	local best, seen, incomplete, i = {}, 0, 0, 0
+	local lists, seen, incomplete, i = {}, 0, 0, 0
 	AS.scanning = true
 
 	local function finish()
-		local kept = 0
-		for id, price in pairs(best) do
-			if ns.MarketData.RecordPrice(id, price, "ahscan") then kept = kept + 1 end
+		local kept, thin = 0, 0
+		for id, listings in pairs(lists) do
+			local price, info = AS.MarketPrice(listings)
+			if price and ns.MarketData.RecordPrice(id, price, "ahscan", info) then
+				kept = kept + 1
+				if info.thin then thin = thin + 1 end
+			end
 		end
 		ns.db.market.lastScan = ns.MarketData.Now()
 		AS.lastResult = { seen = seen, kept = kept, incomplete = incomplete, time = ns.db.market.lastScan }
 		AS.scanning = false
-		ns.Print(("scan done: %d listings read, prices updated for %d of %d tracked items."):format(seen, kept, wantN))
+		ns.Print(("scan done: %d listings read, prices updated for %d of %d tracked items%s."):format(seen, kept, wantN,
+			thin > 0 and (", " .. thin .. " from thin markets") or ""))
 		if incomplete > 0 and incomplete > seen * 0.2 then
 			ns.Print(ns.Color("orange", "many listings had incomplete item data; scan again in a few minutes for better coverage."))
 		end
@@ -129,7 +170,9 @@ function AS.Process(force)
 				elseif want[itemID] and type(buyout) == "number" and buyout > 0 then
 					local unit = buyout
 					if not perUnit then unit = buyout / math.max(tonumber(count) or 1, 1) end
-					if not best[itemID] or unit < best[itemID] then best[itemID] = unit end
+					local l = lists[itemID]
+					if not l then l = {}; lists[itemID] = l end
+					l[#l + 1] = { unit, math.max(tonumber(count) or 1, 1) }
 				end
 			end
 		end
@@ -155,7 +198,10 @@ function AS.Debug(itemID)
 	end
 	if shown == 0 then ns.Print("no listings for item " .. itemID .. " in the current scan data.") end
 	local st = ns.MarketData.GetStats(itemID)
-	ns.Print("stored price: " .. (st and ns.FormatMoney(st.price) or "none"))
+	ns.Print("stored market price: " .. (st and ns.FormatMoney(st.price) or "none"))
+	if st and st.low then
+		ns.Print(("cheapest listing %s, %d units in %d listings%s"):format(ns.FormatMoney(st.low), st.units or 0, st.listings or 0, st.thin and " (thin market)" or ""))
+	end
 	ns.Print("If the stored price looks like a whole stack's price, toggle 'scan price is per unit' in Settings the other way and rescan.")
 end
 

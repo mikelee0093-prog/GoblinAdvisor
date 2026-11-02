@@ -1,0 +1,7 @@
+package-as: GoblinAdvisor
+
+ignore:
+  - tests
+  - ROADMAP.md
+  - README.md
+  - .gitignore
