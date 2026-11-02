@@ -252,6 +252,7 @@ local function Help()
 	print("  /ga recipes         show recipe recording status; '/ga recipes clear' forgets recorded recipes")
 	print("  /ga find <text>     open the Market tab searching for that text")
 	print("  /ga item <item>     open an item's detail view (item id or item link)")
+	print("  /ga ledger          open the Ledger (real AH sales and purchases from mail); 'debug' / 'scan' at an open mailbox")
 	print("  /ga chars           list tracked characters with saved gold and when it was saved")
 	print("  /ga bank            show what the last bank visit recorded")
 	print("  /ga scan            request an Auction House scan (open the AH first)")
@@ -290,6 +291,12 @@ local function Slash(msg)
 		ns.RecipeManager.PrintStatus()
 		ns.MarketData.PrintStatus()
 		ns.AuctionScanner.PrintStatus()
+	elseif cmd == "ledger" then
+		if rest == "debug" then ns.Ledger.Debug()
+		elseif rest == "scan" then
+			local n = ns.Ledger.Scan("manual")
+			ns.Print(("ledger: %d new record(s). Mails seen: %d, invoices read: %d."):format(n, ns.Ledger.stats.mails, ns.Ledger.stats.invoices))
+		else ns.UI.OpenTab("ledger") end
 	elseif cmd == "chars" then
 		ns.CharacterManager.PrintList()
 	elseif cmd == "bank" then

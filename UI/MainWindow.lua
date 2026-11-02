@@ -16,6 +16,8 @@ local TABS = {
 	  planned = "Gathering priorities by level, skill and zone, based on real prices." },
 	{ id = "goldtracker", label = "Gold Tracker", phase = 4,
 	  planned = "Start/stop farming sessions with recorded gold, loot and gold per hour." },
+	{ id = "ledger", label = "Ledger", phase = 6,
+	  planned = "Real Auction House sales and purchases read from your mailbox invoices." },
 	{ id = "characters", label = "Characters", phase = 5,
 	  planned = "All your characters, material allocation, and import/export between accounts." },
 	{ id = "settings", label = "Settings" },

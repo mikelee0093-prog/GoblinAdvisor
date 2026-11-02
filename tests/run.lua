@@ -1038,6 +1038,40 @@ do
 	check(UISpecialFrames[1] == "GoblinAdvisorFrame" or (function() for _, n in ipairs(UISpecialFrames) do if n == "GoblinAdvisorFrame" then return true end end end)(), "Escape closes the window")
 end
 
+-- ledger ---------------------------------------------------------------------------------
+do
+	local LGr = ns.Ledger
+	local mails = {
+		{ header = { nil, nil, "Auction House", "Auction successful: Steel Bar", 0, 0, 10 }, inv = { "seller", "Steel Bar", "Buyer", 0, 1000, 0, 50, 950, 0, 0, 0, 5 } },
+		{ header = { nil, nil, "Auction House", "Auction won: Copper Ore", 0, 0, 10 }, inv = { "buyer", "Copper Ore", "Seller", 300, 300, 0, 0, 0, 0, 0, 0, 20 } },
+		{ header = { nil, nil, "Someone", "Hello", 0, 0, 10 }, inv = nil },
+	}
+	GetInboxNumItems = function() return #mails, #mails end
+	GetInboxHeaderInfo = function(i) local h = mails[i].header; return h[1], h[2], h[3], h[4], h[5], h[6], h[7] end
+	GetInboxInvoiceInfo = function(i) local v = mails[i].inv; if not v then return end; return unpack(v) end
+	ns.db.ledger = { entries = {}, seen = {} }
+	LGr.Scan("test")
+	check(#ns.db.ledger.entries == 2, "ledger records one sale and one purchase, ignores other mail")
+	LGr.Scan("test")
+	check(#ns.db.ledger.entries == 2, "ledger does not record the same mail twice")
+	local sum = LGr.Summary({})
+	check(sum.sold == 1000 and sum.fees == 50 and sum.bought == 300, "ledger totals sold, AH cut and bought")
+	check(sum.net == 650, "ledger net cash flow is sold - cut - bought")
+	check(LGr.CSV({}):find("Steel Bar") and LGr.CSV({}):find("^date,type"), "ledger CSV has header and rows")
+	ns.UI.OpenTab("ledger")
+	check(AllText():find("Steel Bar") and AllText():find("Net cash flow"), "ledger tab shows items and totals")
+	check(click("Transactions") and AllText():find("Copper Ore"), "ledger transactions view lists records")
+	check(click("Copy as CSV") and click("Close"), "ledger CSV panel opens and closes")
+	check(click("Clear ledger") and #ns.db.ledger.entries == 2, "first click on Clear ledger only arms it")
+	check(click("Clear ledger") and #ns.db.ledger.entries == 0, "second click clears the ledger")
+	slash("ledger debug")
+	slash("ledger scan")
+	GetInboxInvoiceInfo = nil
+	LGr.Scan("test")
+	ns.UI.OpenTab("ledger")
+	check((ns.errorCount or 0) == 0, "no errors from the ledger")
+end
+
 -- other commands
 slash("scan debug 2770")
 check(plain(table.concat(out, "\n")):find("listing: stack of"), "/ga scan debug shows raw listings")

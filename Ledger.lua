@@ -1,0 +1,225 @@
+-- Goblin Advisor: Ledger
+-- A record of what you ACTUALLY sold and bought at the Auction House, read from the invoices in
+-- your mailbox. Real numbers only: nothing here is estimated. It starts empty (the game gives
+-- addons no past history) and fills in whenever you open your mailbox.
+-- Read only: it looks at the mail list; it never takes money or items, or sends anything.
+-- UNVERIFIED in game: the invoice call (GetInboxInvoiceInfo) is not documented in docs/api, so
+-- its return order follows Retail. Run /ga ledger debug at an open mailbox to check what it sees.
+local _, ns = ...
+
+local LG = {}
+ns.Ledger = LG
+
+local MAX_ENTRIES = 3000
+local DUP_WINDOW = 120            -- seconds: the same invoice seen again within this window is the same mail
+local DAY = 86400
+
+LG.stats = { scans = 0, mails = 0, invoices = 0, recorded = 0, lastScan = nil, noApi = false }
+
+---------------------------------------------------------------- item names
+-- Invoices give an item NAME, not an id. Map names of items we know about back to ids.
+-- Several quality tiers share one name, so those stay unmatched rather than guessed.
+local nameCache = { key = nil, map = nil }
+local function NameMap()
+	local key = tostring(ns.RecipeManager.revision)
+	if nameCache.key == key and nameCache.map then return nameCache.map end
+	local map = {}
+	local function add(id)
+		if not (C_Item and C_Item.GetItemNameByID) then return end
+		local ok, name = pcall(C_Item.GetItemNameByID, id)
+		name = ok and ns.Safe(name)
+		if type(name) == "string" and name ~= "" then
+			local k = name:lower()
+			if map[k] == nil then map[k] = id elseif map[k] ~= id then map[k] = false end
+		end
+	end
+	for _, id in ipairs(ns.Recommendations.MaterialIDs()) do add(id) end
+	for _, rec in pairs(ns.db.recipes) do if rec.out then add(rec.out) end end
+	nameCache = { key = key, map = map }
+	return map
+end
+
+function LG.ItemID(name)
+	if type(name) ~= "string" then return nil end
+	return NameMap()[name:lower()] or nil
+end
+
+---------------------------------------------------------------- reading the mailbox
+local function Invoice(i)
+	-- invoiceType, itemName, playerName, bid, buyout, deposit, consignment, moneyDelay, etaHour, etaMin, count
+	local r = { pcall(GetInboxInvoiceInfo, i) }
+	if not r[1] then return nil end
+	local invoiceType = ns.Safe(r[2])
+	if invoiceType ~= "seller" and invoiceType ~= "buyer" then return nil, invoiceType end
+	return {
+		type = invoiceType, name = ns.Safe(r[3]),
+		bid = tonumber(ns.Safe(r[5])) or 0, buyout = tonumber(ns.Safe(r[6])) or 0,
+		deposit = tonumber(ns.Safe(r[7])) or 0, fee = tonumber(ns.Safe(r[8])) or 0,
+		count = tonumber(ns.Safe(r[12])) or 1,
+	}
+end
+
+local function DaysLeft(i)
+	local r = { pcall(GetInboxHeaderInfo, i) }
+	if not r[1] then return nil end
+	return tonumber(ns.Safe(r[8]))      -- sender, subject, money, CODAmount, daysLeft follow the two icons
+end
+
+-- Have we recorded this exact invoice already? Mails carry no id, so compare its figures and
+-- when it expires (which does not change while it sits in the box).
+local function SeenBefore(sig, expires)
+	local seen = ns.db.ledger.seen
+	for _, s in ipairs(seen) do
+		if s.sig == sig and math.abs(s.exp - expires) <= DUP_WINDOW then return true end
+	end
+	return false
+end
+
+local function Remember(sig, expires)
+	local seen = ns.db.ledger.seen
+	seen[#seen + 1] = { sig = sig, exp = expires }
+	local cutoff = ns.MarketData.Now() - DAY
+	local kept = {}
+	for _, s in ipairs(seen) do if s.exp >= cutoff then kept[#kept + 1] = s end end   -- gone from the box by now
+	ns.db.ledger.seen = kept
+end
+
+-- Read the open mailbox. Returns how many new records were added.
+function LG.Scan(reason)
+	if not (GetInboxNumItems and GetInboxInvoiceInfo) then LG.stats.noApi = true; return 0 end
+	local okN, n = pcall(GetInboxNumItems)
+	n = okN and ns.Safe(n)
+	if type(n) ~= "number" then return 0 end
+	LG.stats.scans = LG.stats.scans + 1
+	LG.stats.lastScan = ns.MarketData.Now()
+	LG.stats.mails = n
+	local now, added = ns.MarketData.Now(), 0
+	local L = ns.db.ledger
+	for i = 1, n do
+		local inv = Invoice(i)
+		if inv then
+			LG.stats.invoices = LG.stats.invoices + 1
+			local days = DaysLeft(i)
+			local expires = now + (days or 0) * DAY
+			local gross = inv.bid > 0 and inv.bid or inv.buyout
+			local sig = table.concat({ inv.type, tostring(inv.name), inv.bid, inv.buyout, inv.deposit, inv.fee, inv.count }, "|")
+			if gross > 0 and not SeenBefore(sig, expires) then
+				L.entries[#L.entries + 1] = {
+					t = now, kind = inv.type == "seller" and "sale" or "purchase",
+					name = inv.name, id = LG.ItemID(inv.name), qty = math.max(1, inv.count),
+					gross = gross, fee = inv.type == "seller" and inv.fee or 0,
+					char = ns.CharacterManager.currentKey,
+				}
+				Remember(sig, expires)
+				added = added + 1
+			end
+		end
+	end
+	while #L.entries > MAX_ENTRIES do table.remove(L.entries, 1) end
+	LG.stats.recorded = LG.stats.recorded + added
+	if added > 0 then
+		LG.revision = (LG.revision or 0) + 1
+		ns.Debug("ledger: recorded", added, "new invoice(s)", tostring(reason))
+		ns.UI.RefreshIfShown()
+	end
+	return added
+end
+
+local pending = false
+local function Queue(reason)
+	if pending then return end
+	pending = true
+	C_Timer.After(1, function() pending = false; ns.Try("ledger scan", LG.Scan, reason) end)
+end
+ns.On("MAIL_SHOW", function() Queue("mail show") end)
+ns.On("MAIL_INBOX_UPDATE", function() Queue("inbox update") end)
+
+-- What does the mailbox look like to this addon? For checking the invoice call in game.
+function LG.Debug()
+	if not (GetInboxNumItems and GetInboxInvoiceInfo) then ns.Print("this client has no GetInboxInvoiceInfo."); return end
+	local n = ns.Safe(GetInboxNumItems())
+	if type(n) ~= "number" or n == 0 then ns.Print("no mail in the box (open your mailbox first)."); return end
+	ns.Print(("%d mails:"):format(n))
+	for i = 1, math.min(n, 15) do
+		local h = { pcall(GetInboxHeaderInfo, i) }
+		local inv, other = Invoice(i)
+		print(("  #%d from %s, subject %s, money %s, days left %s -> %s"):format(i, tostring(ns.Safe(h[4])), tostring(ns.Safe(h[5])),
+			tostring(ns.Safe(h[6])), tostring(ns.Safe(h[8])),
+			inv and (inv.type .. " invoice for " .. tostring(inv.name) .. " x" .. inv.count) or (other and ("invoice type " .. tostring(other)) or "no invoice")))
+	end
+end
+
+---------------------------------------------------------------- numbers
+-- Entries inside a window. opts = { since = seconds back (nil = all), char = key (nil = all) }
+function LG.Entries(opts)
+	opts = opts or {}
+	local out, cutoff = {}, opts.since and (ns.MarketData.Now() - opts.since) or nil
+	for _, e in ipairs(ns.db.ledger.entries) do
+		if (not cutoff or e.t >= cutoff) and (not opts.char or e.char == opts.char) then out[#out + 1] = e end
+	end
+	return out
+end
+
+-- crafted = output of a recorded recipe, material = used as a reagent; cached per recipe revision
+local classCache = { rev = nil, crafted = {}, material = {} }
+local function Class(id)
+	if not id then return "other" end
+	if classCache.rev ~= ns.RecipeManager.revision then
+		classCache = { rev = ns.RecipeManager.revision, crafted = {}, material = {} }
+		for _, rec in pairs(ns.db.recipes) do if rec.out then classCache.crafted[rec.out] = true end end
+		for _, m in ipairs(ns.Recommendations.MaterialIDs()) do classCache.material[m] = true end
+	end
+	if classCache.crafted[id] then return "crafted" end
+	if classCache.material[id] then return "material" end
+	return "other"
+end
+
+-- Totals and a per-item table. All money in copper. Realized prices are what you actually got/paid.
+function LG.Summary(opts)
+	local entries = LG.Entries(opts)
+	local s = { entries = entries, sold = 0, fees = 0, bought = 0, items = {}, byClass = { crafted = 0, material = 0, other = 0 } }
+	local byKey = {}
+	for _, e in ipairs(entries) do
+		local key = e.id or ("name:" .. tostring(e.name):lower())
+		local it = byKey[key]
+		if not it then
+			it = { key = key, id = e.id, name = e.name, soldQty = 0, soldGross = 0, soldNet = 0, boughtQty = 0, boughtCost = 0, class = Class(e.id) }
+			byKey[key] = it
+			s.items[#s.items + 1] = it
+		end
+		if e.kind == "sale" then
+			it.soldQty, it.soldGross, it.soldNet = it.soldQty + e.qty, it.soldGross + e.gross, it.soldNet + (e.gross - e.fee)
+			s.sold, s.fees = s.sold + e.gross, s.fees + e.fee
+			s.byClass[it.class] = s.byClass[it.class] + (e.gross - e.fee)
+		else
+			it.boughtQty, it.boughtCost = it.boughtQty + e.qty, it.boughtCost + e.gross
+			s.bought = s.bought + e.gross
+		end
+	end
+	for _, it in ipairs(s.items) do
+		if it.soldQty > 0 then it.avgSold = it.soldGross / it.soldQty end
+		if it.boughtQty > 0 then it.avgBought = it.boughtCost / it.boughtQty end
+		if it.id and it.avgSold then
+			local st = ns.MarketData.GetStats(it.id)
+			if st then it.market = st.price; it.vsMarket = (it.avgSold - st.price) / st.price end
+		end
+		it.net = it.soldNet - it.boughtCost
+	end
+	s.net = s.sold - s.fees - s.bought
+	return s
+end
+
+function LG.CSV(opts)
+	local rows = { "date,type,item,item_id,quantity,unit_price_gold,gross_gold,ah_cut_gold,net_gold,character" }
+	local function g(c) return string.format("%.4f", (c or 0) / 10000) end
+	for _, e in ipairs(LG.Entries(opts)) do
+		local d = ""
+		if date then local ok, v = pcall(date, "%Y-%m-%d %H:%M", e.t); if ok then d = v end end
+		local name = tostring(e.name or ""):gsub('"', '""')
+		rows[#rows + 1] = ('%s,%s,"%s",%s,%d,%s,%s,%s,%s,%s'):format(d, e.kind, name, e.id or "", e.qty,
+			g(e.gross / e.qty), g(e.gross), g(e.fee), g(e.kind == "sale" and (e.gross - e.fee) or -e.gross), e.char or "")
+	end
+	return table.concat(rows, "\n")
+end
+
+function LG.Clear() ns.db.ledger.entries, ns.db.ledger.seen = {}, {} ; LG.revision = (LG.revision or 0) + 1 end
