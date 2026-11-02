@@ -1,0 +1,31 @@
+## Interface: 16001
+## Title: Goblin Advisor
+## Notes: Account-wide gold-making intelligence for WoW: Forever (Phase 4: prices, profit, gathering advice and gold tracking).
+## Author: kirk.lennstrom@gmail.com
+## Version: 0.5.0
+## SavedVariables: GoblinAdvisorDB
+
+Core.lua
+Database.lua
+Demo.lua
+CharacterManager.lua
+RecipeManager.lua
+ProfessionManager.lua
+ProfitCalculator.lua
+Inventory.lua
+GatheringAdvisor.lua
+GoldTracker.lua
+Recommendations.lua
+Allocation.lua
+Transfer.lua
+MarketData.lua
+AuctionScanner.lua
+UI\MainWindow.lua
+UI\Widgets.lua
+UI\Dashboard.lua
+UI\ProfessionWindow.lua
+UI\MarketWindow.lua
+UI\GatheringWindow.lua
+UI\GoldTrackerWindow.lua
+UI\CharactersWindow.lua
+UI\Settings.lua
