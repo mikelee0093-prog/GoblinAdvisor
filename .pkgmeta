@@ -5,3 +5,4 @@ ignore:
   - ROADMAP.md
   - README.md
   - .gitignore
+  - GoblinAdvisor_Camelot.toc   # Forever build held back until verified on launch day; delete this line to include it

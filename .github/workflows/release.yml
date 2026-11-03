@@ -1,0 +1,20 @@
+name: Package and release
+
+# Runs when you push a tag such as v0.9.0-beta1 (beta) or v1.0.0 (release).
+# Tags containing "beta" or "alpha" are uploaded to CurseForge as beta / alpha.
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: BigWigsMods/packager@v2
