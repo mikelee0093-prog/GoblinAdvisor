@@ -1154,6 +1154,45 @@ do
 	check((ns.errorCount or 0) == 0, "no errors from lists")
 end
 
+-- ledger crafting comparison ---------------------------------------------------------------
+do
+	local LGr = ns.Ledger
+	local rid, rec
+	local rids = {}
+	for id in pairs(ns.db.recipes) do rids[#rids + 1] = id end
+	table.sort(rids)
+	for _, id in ipairs(rids) do
+		local r = ns.db.recipes[id]
+		if r.out and #r.reagents > 0 and ns.ProfitCalculator.Evaluate(id, r).profit then rid, rec = id, r; break end
+	end
+	check(rid ~= nil, "test data has a priceable recipe for the crafting comparison")
+	local me = ns.CharacterManager.currentKey
+	ns.db.ledger = { entries = {
+		{ t = ns.MarketData.Now(), kind = "sale", name = "Crafted", id = rec.out, qty = 4, gross = 4000, fee = 200, char = me },
+	}, seen = {}, unsold = {} }
+	local cr = LGr.Crafting({})
+	check(#cr.rows == 1 and cr.rows[1].id == rec.out and cr.rows[1].soldQty == 4, "crafting comparison lists the crafted item sold")
+	local row = cr.rows[1]
+	check(row.netEach == 950, "net each is the real sale after the AH cut")
+	check(row.rawPer and math.abs(row.gain - (row.netEach - row.rawPer)) < 0.001 and row.basis == "market", "gain = net each - raw value; scan prices are labelled market")
+	check(math.abs(cr.total - row.gain * 4) < 0.001 and cr.counted == 1, "total gain sums over items")
+	-- a real recorded sale of a reagent replaces the scan price
+	local rid1 = rec.reagents[1].ids[1]
+	ns.db.ledger.entries[#ns.db.ledger.entries + 1] = { t = ns.MarketData.Now(), kind = "sale", name = "Mat", id = rid1, qty = 10, gross = 100, fee = 5, char = me }
+	local cr2 = LGr.Crafting({})
+	local anyReal = cr2.rows[1].basis == "real" or cr2.rows[1].basis == "mixed"
+	check(anyReal and cr2.rows[1].rawPer ~= row.rawPer, "real reagent sales are preferred over scan prices")
+	ns.UI.ledger.Debug.csv = false
+	ns.UI.OpenTab("ledger")
+	check(click("Crafting") and AllText():find("Gain each") and AllText():find("beat") or AllText():find("lost to"), "crafting view opens with a verdict line")
+	check(click("By item"), "back to by item view")
+	ns.db.ledger = { entries = {}, seen = {}, unsold = {} }
+	ns.UI.OpenTab("ledger"); click("Crafting")
+	check(AllText():find("No crafted items sold"), "crafting view explains an empty state")
+	click("By item")
+	check((ns.errorCount or 0) == 0, "no errors from the crafting comparison")
+end
+
 -- other commands
 slash("scan debug 2770")
 check(plain(table.concat(out, "\n")):find("listing: stack of"), "/ga scan debug shows raw listings")

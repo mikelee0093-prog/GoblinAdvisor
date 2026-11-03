@@ -284,6 +284,66 @@ function LG.Summary(opts)
 	return s
 end
 
+---------------------------------------------------------------- crafting vs raw
+-- For each crafted item you actually sold: what one sold item netted you (real, after the AH cut)
+-- against what its reagents would have netted if you had sold them raw instead.
+-- Raw value of a reagent = its real average sale in the ledger if you have sold it, otherwise the
+-- scanned market price after the 5% cut (an estimate, flagged in "basis"). The cheapest tier is used,
+-- like the profit calculator. Nothing is recorded about the crafts themselves.
+local AH_CUT = 0.05
+function LG.Crafting(opts)
+	local sum = LG.Summary(opts)
+	local realRaw = {}
+	for _, it in ipairs(sum.items) do
+		if it.id and it.soldQty > 0 then realRaw[it.id] = it.soldNet / it.soldQty end
+	end
+	local recipeFor = {}
+	local rids = {}
+	for rid in pairs(ns.db.recipes) do rids[#rids + 1] = rid end
+	table.sort(rids)
+	for _, rid in ipairs(rids) do
+		local rec = ns.db.recipes[rid]
+		if rec.out and not recipeFor[rec.out] then recipeFor[rec.out] = rec end
+	end
+	local rows, total, counted = {}, 0, 0
+	for _, it in ipairs(sum.items) do
+		local rec = it.id and it.soldQty > 0 and recipeFor[it.id]
+		if rec then
+			local row = { id = it.id, name = it.name, soldQty = it.soldQty, netEach = it.soldNet / it.soldQty, recipe = rec }
+			local yield = ((rec.qmin or 1) + (rec.qmax or rec.qmin or 1)) / 2
+			if yield < 1 then yield = 1 end
+			local raw, real, est, missing = 0, 0, 0, false
+			for _, slot in ipairs(rec.reagents) do
+				local best, kind
+				for _, id in ipairs(slot.ids) do
+					local v, k = realRaw[id], "real"
+					if not v then
+						local st = ns.MarketData.GetStats(id)
+						if st then v, k = st.price * (1 - AH_CUT), "market" end
+					end
+					if v and (not best or v < best) then best, kind = v, k end
+				end
+				if best then
+					raw = raw + best * slot.qty
+					if kind == "real" then real = real + 1 else est = est + 1 end
+				else
+					missing = true
+				end
+			end
+			if not missing and #rec.reagents > 0 then
+				row.rawPer = raw / yield
+				row.gain = row.netEach - row.rawPer
+				row.totalGain = row.gain * row.soldQty
+				row.basis = est == 0 and "real" or (real == 0 and "market" or "mixed")
+				total, counted = total + row.totalGain, counted + 1
+			end
+			rows[#rows + 1] = row
+		end
+	end
+	table.sort(rows, function(a, b) return (a.totalGain or -math.huge) > (b.totalGain or -math.huge) end)
+	return { rows = rows, total = total, counted = counted }
+end
+
 function LG.CSV(opts)
 	local rows = { "date,type,item,item_id,quantity,unit_price_gold,gross_gold,ah_cut_gold,net_gold,character" }
 	local function g(c) return string.format("%.4f", (c or 0) / 10000) end

@@ -1,6 +1,6 @@
 # Goblin Advisor - roadmap
 
-Current version: 0.8.0 (Ledger sell-through, Lists tab with shopping list and watch list; all new mail/AH behaviour UNVERIFIED in game) (Retail interface 120105; Forever interface 16001 via `GoblinAdvisor_Camelot.toc`).
+Current version: 0.9.0 on branch ledger-crafts (main is 0.8.0, the restore point). 0.8.0: (Ledger sell-through, Lists tab with shopping list and watch list; all new mail/AH behaviour UNVERIFIED in game) (Retail interface 120105; Forever interface 16001 via `GoblinAdvisor_Camelot.toc`).
 Testing happens on Retail now. Forever (Classic+) adjustments follow its launch on Nov 4, 2026.
 The addon stays free: no paid features, no in-game ads or donation prompts (Blizzard UI add-on policy).
 Forever build title: "Goblin Advisor Forever" (title line in the Camelot toc only; same folder and code).
@@ -34,7 +34,7 @@ Phases 1 to 5 are built and pass the headless tests (370 checks). In-game verifi
 3. Publish to CurseForge: project page, screenshots, API token as a GitHub secret, tag a release.
 
 ## Ideas for later
-- DONE in 0.7.0 (mail sales/purchases, by item, transactions, CSV; crafts not yet recorded): Ledger tab ("built-in spreadsheet"): record AH sales (mail invoices), purchases and crafts after install; real sale prices next to market estimates; raw sale vs crafting comparison; CSV copy button. Read only. Retail functions first, verify on Forever.
+- DONE in 0.7.0 (mail sales/purchases, by item, transactions, CSV; VERIFIED in game 2026-11-02 incl. unsold mail and quantities). 0.9.0 adds a Crafting view: real sale vs what the reagents would have netted raw (crafts themselves are not recorded): Ledger tab ("built-in spreadsheet"): record AH sales (mail invoices), purchases and crafts after install; real sale prices next to market estimates; raw sale vs crafting comparison; CSV copy button. Read only. Retail functions first, verify on Forever.
 - DONE in 0.8.0: real sell-through from expired/cancelled mail (Ledger). Scan-to-scan listing comparison dropped.
 - DONE in 0.8.0: Craft shopping list (Lists tab, `/ga shop`, "Add to shopping list" in Market recipe view). Later: split "own" by character, bank-only vs bags.
 - Selling prompts; price alerts DONE in 0.8.0 (Watch list: Lists tab, `/ga watch`, chat message after a scan; watched items are added to scans); profit sparklines in the item detail view.

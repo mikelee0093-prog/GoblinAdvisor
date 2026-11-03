@@ -26,6 +26,16 @@ local TX_COLS = {
 	{ key = "net", label = "Net", w = 120, align = "RIGHT" },
 }
 
+local CRAFT_COLS = {
+	{ key = "name", label = "Crafted item", w = 190 },
+	{ key = "sold", label = "Sold", w = 44, align = "RIGHT" },
+	{ key = "net", label = "Net each", w = 100, align = "RIGHT" },
+	{ key = "raw", label = "Mats raw each", w = 110, align = "RIGHT" },
+	{ key = "gain", label = "Gain each", w = 100, align = "RIGHT" },
+	{ key = "total", label = "Total gain", w = 110, align = "RIGHT" },
+	{ key = "basis", label = "Basis", w = 60 },
+}
+
 local PERIODS = { { label = "7 days", secs = 7 * 86400 }, { label = "30 days", secs = 30 * 86400 }, { label = "All time", secs = nil } }
 
 local function Signed(v)
@@ -57,6 +67,7 @@ UI.RegisterPage("ledger", function(parent)
 
 	local itemsBtn = UI.Button(parent, "By item", 80, 22, function() state.view = "items"; UI.RefreshIfShown() end)
 	local txBtn = UI.Button(parent, "Transactions", 100, 22, function() state.view = "tx"; UI.RefreshIfShown() end)
+	local craftBtn = UI.Button(parent, "Crafting", 80, 22, function() state.view = "craft"; UI.RefreshIfShown() end)
 	local periodBtn = UI.Button(parent, "", 90, 22, function() state.period = state.period % #PERIODS + 1; UI.RefreshIfShown() end)
 	local scopeBtn = UI.Button(parent, "", 140, 22, function() state.allChars = not state.allChars; UI.RefreshIfShown() end)
 	local csvBtn = UI.Button(parent, "Copy as CSV", 100, 22, function() state.csv = true; UI.RefreshIfShown() end)
@@ -67,7 +78,8 @@ UI.RegisterPage("ledger", function(parent)
 	end)
 	itemsBtn:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
 	txBtn:SetPoint("LEFT", itemsBtn, "RIGHT", 4, 0)
-	periodBtn:SetPoint("LEFT", txBtn, "RIGHT", 12, 0)
+	craftBtn:SetPoint("LEFT", txBtn, "RIGHT", 4, 0)
+	periodBtn:SetPoint("LEFT", craftBtn, "RIGHT", 12, 0)
 	scopeBtn:SetPoint("LEFT", periodBtn, "RIGHT", 4, 0)
 	clearBtn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
 	csvBtn:SetPoint("RIGHT", clearBtn, "LEFT", -4, 0)
@@ -79,7 +91,8 @@ UI.RegisterPage("ledger", function(parent)
 
 	local itemTable = UI.Table(parent, ITEM_COLS, { sortKey = "net" })
 	local txTable = UI.Table(parent, TX_COLS, { sortKey = "when" })
-	for _, t in ipairs({ itemTable, txTable }) do
+	local craftTable = UI.Table(parent, CRAFT_COLS, { sortKey = "total" })
+	for _, t in ipairs({ itemTable, txTable, craftTable }) do
 		t.frame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -64)
 		t.frame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
 	end
@@ -116,11 +129,12 @@ UI.RegisterPage("ledger", function(parent)
 		local sum = ns.Ledger.Summary(opts)
 		itemsBtn:SetActive(state.view == "items")
 		txBtn:SetActive(state.view == "tx")
+		craftBtn:SetActive(state.view == "craft")
 		periodBtn.text:SetText(PERIODS[state.period].label)
 		scopeBtn.text:SetText(state.allChars and "All characters" or "This character")
 
 		if state.csv then
-			info:Hide(); itemTable.frame:Hide(); txTable.frame:Hide(); csv:Show()
+			info:Hide(); itemTable.frame:Hide(); txTable.frame:Hide(); craftTable.frame:Hide(); csv:Show()
 			box:SetText(ns.Ledger.CSV(opts))
 			return
 		end
@@ -143,10 +157,40 @@ UI.RegisterPage("ledger", function(parent)
 					math.floor(sum.sellThrough * 100 + 0.5), sum.soldQty, sum.unsoldQty))
 			end
 		end
+		local crafting = state.view == "craft" and ns.Ledger.Crafting(opts) or nil
+		if crafting then
+			L = {}
+			if #crafting.rows == 0 then
+				L[1] = ns.Color("orange", "No crafted items sold in this selection yet.")
+				L[2] = ns.Color("grey", "Needs sales of items made by recipes the addon has recorded (open your profession windows).")
+			else
+				L[1] = ("Across %d item(s) with full data, crafting %s selling the materials raw by %s."):format(crafting.counted,
+					crafting.total >= 0 and ns.Color("green", "beat") or ns.Color("red", "lost to"), ns.FormatMoney(math.abs(crafting.total), true))
+				L[2] = ns.Color("grey", "Net each = real sale after the 5% cut. Mats raw = what the reagents would have netted sold as they are (your real sales if you have them, else the scan price: Basis says which). Cheapest tier, per item made.")
+			end
+		end
 		info:SetText(table.concat(L, "\n"))
 
-		if state.view == "items" then
-			txTable.frame:Hide(); itemTable.frame:Show()
+		if state.view == "craft" then
+			itemTable.frame:Hide(); txTable.frame:Hide(); craftTable.frame:Show()
+			local rows = {}
+			for _, r in ipairs(crafting.rows) do
+				local nm = ns.RecipeManager.ItemName(r.id)
+				local basisTxt = r.basis == "real" and ns.Color("green", "real") or (r.basis == "mixed" and ns.Color("orange", "mixed") or (r.basis == "market" and ns.Color("orange", "market") or ns.Color("grey", "-")))
+				rows[#rows + 1] = {
+					cells = { name = nm, sold = tostring(r.soldQty), net = ns.FormatMoney(r.netEach, true),
+						raw = r.rawPer and ns.FormatMoney(r.rawPer, true) or ns.Color("orange", "no data"),
+						gain = Signed(r.gain), total = Signed(r.totalGain), basis = basisTxt },
+					sort = { name = nm, sold = r.soldQty, net = r.netEach, raw = r.rawPer, gain = r.gain, total = r.totalGain },
+					tip = { nm, "Recipe: " .. tostring(r.recipe.name),
+						r.basis == "real" and "Every reagent value comes from your own recorded sales." or (r.basis and "Some reagent values are scan prices (an estimate)." or "A reagent has no price, so this cannot be compared."),
+						"Click for the item details." },
+					onClick = function() UI.market.Show("item", r.id) end,
+				}
+			end
+			craftTable:SetData(rows)
+		elseif state.view == "items" then
+			txTable.frame:Hide(); craftTable.frame:Hide(); itemTable.frame:Show()
 			local rows = {}
 			for _, it in ipairs(sum.items) do
 				local nm = it.id and ns.RecipeManager.ItemName(it.id) or tostring(it.name)
@@ -170,7 +214,7 @@ UI.RegisterPage("ledger", function(parent)
 			end
 			itemTable:SetData(rows)
 		else
-			itemTable.frame:Hide(); txTable.frame:Show()
+			itemTable.frame:Hide(); craftTable.frame:Hide(); txTable.frame:Show()
 			local rows = {}
 			local list = sum.entries
 			for i = #list, 1, -1 do
