@@ -3,6 +3,7 @@
 ## Notes: Free, read-only gold-making advisor: market prices, crafting profit, gathering, gold tracking, AH ledger, shopping and watch lists.
 ## Author: mikelee0093-prog
 ## Version: 0.9.0
+## X-Curse-Project-ID: 1779323
 ## SavedVariables: GoblinAdvisorDB
 
 Core.lua
